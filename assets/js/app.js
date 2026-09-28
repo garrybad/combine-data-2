@@ -74,10 +74,10 @@
       var header = response.headers.get('X-Processing-Stats');
       var blob = await response.blob();
       var url = URL.createObjectURL(blob); var anchor = document.createElement('a');
-      anchor.href = url; anchor.download = 'hasil-kombinasi.xlsx'; document.body.appendChild(anchor); anchor.click(); anchor.remove(); URL.revokeObjectURL(url);
-      if (header) { try { renderStats(JSON.parse(decodeURIComponent(header))); } catch (ignore) {} }
-      showStatus('success', 'Proses selesai. File hasil-kombinasi.xlsx sudah diunduh.');
+      anchor.href = url; anchor.download = 'hasil-kombinasi.csv'; document.body.appendChild(anchor); anchor.click(); anchor.remove(); URL.revokeObjectURL(url);
+      if (header) { try { renderStats(JSON.parse(decodeURIComponent(header))); } catch (ignore) { } }
+      showStatus('success', 'Proses selesai. File hasil-kombinasi.csv sudah diunduh.');
     } catch (err) { showStatus('error', err && err.message ? err.message : 'Terjadi kesalahan saat memproses data.'); }
-    finally { submit.disabled = false; submit.textContent = submit.dataset.original || '⇄  Proses & unduh .XLSX'; }
+    finally { submit.disabled = false; submit.textContent = submit.dataset.original || '⇄  Proses & unduh .CSV'; }
   });
 })();

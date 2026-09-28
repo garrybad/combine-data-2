@@ -29,7 +29,7 @@ class Reconciliation extends CI_Controller
 
             $lkp = $this->store_upload('lkpFile', 'lkp');
             $tb = $this->store_upload('tbFile', 'tb');
-            $output = FCPATH . 'outputs/hasil-rekonsiliasi-' . date('Ymd-His') . '-' . mt_rand(1000, 9999) . '.xlsx';
+            $output = FCPATH . 'outputs/hasil-rekonsiliasi-' . date('Ymd-His') . '-' . mt_rand(1000, 9999) . '.csv';
 
             if (!is_dir(dirname($output))) @mkdir(dirname($output), 0775, TRUE);
             if (!is_writable(dirname($output))) throw new Exception('Folder outputs tidak dapat ditulis.');
@@ -43,15 +43,23 @@ class Reconciliation extends CI_Controller
 
             if (!is_file($output)) throw new Exception('File hasil tidak berhasil dibuat.');
 
-            $download_name = 'hasil-kombinasi.xlsx';
+            $download_name = 'hasil-kombinasi.csv';
             $size = filesize($output);
-            $this->output->set_header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            $this->output->set_header('Content-Type: text/csv');
             $this->output->set_header('Content-Disposition: attachment; filename="' . $download_name . '"');
             $this->output->set_header('Content-Length: ' . $size);
             $this->output->set_header('Cache-Control: no-store');
             $this->output->set_header('X-Processing-Stats: ' . rawurlencode(json_encode($stats)));
-            $this->output->set_output(file_get_contents($output));
+            
+            // Keluarkan semua header yang di-set oleh CodeIgniter
+            $this->output->_display();
+            
+            // Alirkan file langsung ke browser tanpa memuatnya ke RAM
+            readfile($output);
             @unlink($output);
+            
+            // Hentikan eksekusi agar CodeIgniter tidak menimpa output
+            exit;
         } catch (Exception $e) {
             log_message('error', 'PROCESS_ERROR: ' . $e->getMessage());
             $this->json_error($e->getMessage(), 500);

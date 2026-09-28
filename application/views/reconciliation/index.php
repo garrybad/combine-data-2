@@ -54,7 +54,7 @@
             <input id="tbInput" name="tbFile" type="file" accept=".tsv,.txt" hidden>
           </div>
         </div>
-        <div class="form-foot"><p><b>hasil-kombinasi.xlsx</b><br>File hasil akan langsung diunduh setelah proses selesai.</p><button id="submitBtn" class="primary" type="submit" disabled>⇄ &nbsp;Proses & unduh .XLSX</button></div>
+        <div class="form-foot"><p><b>hasil-kombinasi.csv</b><br>File hasil akan langsung diunduh setelah proses selesai.</p><button id="submitBtn" class="primary" type="submit" disabled>⇄ &nbsp;Proses & unduh .CSV</button></div>
       </form>
       <div id="status" class="status hidden"></div>
     </section>
@@ -65,6 +65,6 @@
     </section>
   </div>
 </main>
-<script src="<?= base_url('assets/js/app.js') ?>"></script>
+<script src="<?= base_url('assets/js/app.js?v=' . time()) ?>"></script>
 </body>
 </html>
