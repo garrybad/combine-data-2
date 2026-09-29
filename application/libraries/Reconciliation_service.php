@@ -3,6 +3,7 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 
 class Reconciliation_service
 {
+    private $CI;
     private $parser;
     private $amount;
     private $model;
@@ -15,10 +16,9 @@ class Reconciliation_service
         $this->model = $this->CI->Reconciliation_model;
     }
 
-    public function process($lkp_path, $tb_path, $output_path)
+    public function process($lkp_path, $tb_path, $output_path, $format = 'csv')
     {
         $mapping_rows = $this->model->get_mapping_efs();
-        if (!$mapping_rows) throw new Exception('Tabel mappingEfs tidak memiliki data.');
 
         $mapping_by_rincian = array();
         foreach ($mapping_rows as $row) {
@@ -31,70 +31,95 @@ class Reconciliation_service
         $duplicate_mapping = 0;
         foreach ($mapping_by_rincian as $rows) if (count($rows) > 1) $duplicate_mapping++;
 
-        $all_lkp_keys = array();
-        $valid_lkp_by_f2 = array();
+        $stats = array('tbRows' => 0, 'mappedRows' => 0, 'unmatchedRincianAkun' => 0,
+            'filteredByPeriod' => 0, 'filteredByF5' => 0, 'unmatchedEfsGroups' => 0,
+            'resultRows' => 0, 'duplicateMappingKeys' => $duplicate_mapping);
+        $lkp_groups = array();
         $lkp_handle = fopen($lkp_path, 'rb');
         if (!$lkp_handle) throw new Exception('File LKP tidak dapat dibuka.');
         try {
-            $this->parser->parse_lkp_handle($lkp_handle, function ($row) use (&$all_lkp_keys, &$valid_lkp_by_f2) {
-                $key = $this->key($row['f2']);
-                if ($key === '') return;
-                if (!isset($all_lkp_keys[$key])) $all_lkp_keys[$key] = 0;
-                $all_lkp_keys[$key]++;
-                if ($this->key($row['f5']) === '0000') {
-                    if (!isset($valid_lkp_by_f2[$key])) $valid_lkp_by_f2[$key] = array();
-                    $valid_lkp_by_f2[$key][] = $row;
+            $this->parser->parse_lkp_handle($lkp_handle, function ($row) use (&$lkp_groups, &$stats) {
+                $branch = $this->key($row['f5']);
+                if ($branch === '0000') { $stats['filteredByF5']++; return; }
+                $coa = $this->key($row['f2']);
+                $currency = $this->key($row['f4']);
+                $key = $this->group_key($branch, $coa, $currency);
+                if (!isset($lkp_groups[$key])) {
+                    $lkp_groups[$key] = array('branch' => $branch, 'coaF1' => $coa,
+                        'currency' => $currency, 'lkp_ori' => '0.00', 'lkp_eqIDR' => '0.00');
+                }
+                // CASE WHEN keeps the group even if none of its rows has f8 = 0000.
+                if ($this->key($row['f8']) === '0000') {
+                    $lkp_groups[$key]['lkp_ori'] = $this->amount->sum($lkp_groups[$key]['lkp_ori'], $row['f6']);
+                    $lkp_groups[$key]['lkp_eqIDR'] = $this->amount->sum($lkp_groups[$key]['lkp_eqIDR'], $row['f7']);
                 }
             });
         } finally { fclose($lkp_handle); }
 
-        $duplicate_lkp = 0;
-        foreach ($all_lkp_keys as $count) if ($count > 1) $duplicate_lkp++;
-
-        $exporter = new Excel_exporter();
-        $exporter->start();
-        $stats = array('tbRows' => 0, 'mappedRows' => 0, 'unmatchedRincianAkun' => 0, 'unmatchedCoaF1' => 0, 'filteredByF5' => 0, 'resultRows' => 0, 'duplicateMappingKeys' => $duplicate_mapping, 'duplicateLkpF2Keys' => $duplicate_lkp);
-
+        $efs_groups = array();
         $tb_handle = fopen($tb_path, 'rb');
         if (!$tb_handle) throw new Exception('File TB Juni tidak dapat dibuka.');
         try {
-            $this->parser->parse_tb_handle($tb_handle, function ($tb_row) use (&$stats, &$mapping_by_rincian, &$all_lkp_keys, &$valid_lkp_by_f2, $exporter) {
+            $this->parser->parse_tb_handle($tb_handle, function ($row) use (&$stats, &$mapping_by_rincian, &$efs_groups) {
                 $stats['tbRows']++;
-                $rincian = $this->parser->extract_rincian_akun(isset($tb_row['CONCATENATED_SEGMENTS']) ? $tb_row['CONCATENATED_SEGMENTS'] : '');
-                $mapping_key = $this->key($rincian);
-                $mappings = isset($mapping_by_rincian[$mapping_key]) ? $mapping_by_rincian[$mapping_key] : array();
+                if (!is_numeric($row['PERIOD_NUM']) || (float) $row['PERIOD_NUM'] != 6) {
+                    $stats['filteredByPeriod']++;
+                    return;
+                }
+                $segments = explode('-', $row['CONCATENATED_SEGMENTS']);
+                $branch = $this->key($segments[0]);
+                $rincian = $this->parser->extract_rincian_akun($row['CONCATENATED_SEGMENTS']);
+                $mappings = isset($mapping_by_rincian[$rincian]) ? $mapping_by_rincian[$rincian] : array();
                 if (!$mappings) { $stats['unmatchedRincianAkun']++; return; }
                 $stats['mappedRows']++;
-
                 foreach ($mappings as $mapping) {
-                    $coa_key = $this->key($mapping['coaF1']);
-                    $all_count = isset($all_lkp_keys[$coa_key]) ? $all_lkp_keys[$coa_key] : 0;
-                    $valid_rows = isset($valid_lkp_by_f2[$coa_key]) ? $valid_lkp_by_f2[$coa_key] : array();
-                    if ($all_count === 0) { $stats['unmatchedCoaF1']++; continue; }
-                    if (!$valid_rows) { $stats['filteredByF5'] += $all_count; continue; }
-
-                    foreach ($valid_rows as $lkp) {
-                        $exporter->add_row(array(
-                            'PERIOD_NUM' => isset($tb_row['PERIOD_NUM']) ? $tb_row['PERIOD_NUM'] : '',
-                            'rincianAkun_tb' => $rincian,
-                            'rincianAkun' => $mapping['rincianAkun'],
-                            'namaCOA' => $mapping['namaCOA'],
-                            'penjelasanCOA' => $mapping['penjelasanCOA'],
-                            'coaF1' => $mapping['coaF1'],
-                            'f1' => $lkp['f1'], 'f2' => $lkp['f2'], 'f3' => $lkp['f3'], 'f4' => $lkp['f4'],
-                            'f5' => $lkp['f5'], 'f8' => $lkp['f8'],
-                            'BASE_AMOUNT' => isset($tb_row['BASE_AMOUNT']) ? $tb_row['BASE_AMOUNT'] : '0',
-                            'f7' => $lkp['f7'],
-                            'selisih' => $this->amount->subtract(isset($tb_row['BASE_AMOUNT']) ? $tb_row['BASE_AMOUNT'] : '0', $lkp['f7'])
-                        ));
-                        $stats['resultRows']++;
+                    if ($mapping['coaF1'] === NULL) continue;
+                    $key = $this->group_key($branch, $this->key($mapping['coaF1']), $this->key($row['CURRENCY_CODE']));
+                    if (!isset($efs_groups[$key])) {
+                        $efs_groups[$key] = array('rincian' => array(), 'efs_ori' => '0.00', 'efs_eqIDR' => '0.00');
                     }
+                    $efs_groups[$key]['rincian'][$rincian] = $rincian;
+                    $efs_groups[$key]['efs_ori'] = $this->amount->sum($efs_groups[$key]['efs_ori'], $row['AMOUNT']);
+                    $efs_groups[$key]['efs_eqIDR'] = $this->amount->sum($efs_groups[$key]['efs_eqIDR'], $row['BASE_AMOUNT']);
                 }
             });
         } finally { fclose($tb_handle); }
 
+        uasort($lkp_groups, function ($a, $b) {
+            foreach (array('branch', 'coaF1', 'currency') as $column) {
+                $comparison = strcmp($a[$column], $b[$column]);
+                if ($comparison !== 0) return $comparison;
+            }
+            return 0;
+        });
+        $exporter = new Excel_exporter();
+        $exporter->start($format);
+        foreach ($lkp_groups as $key => $lkp) {
+            $efs = isset($efs_groups[$key]) ? $efs_groups[$key] : NULL;
+            $rincian = NULL;
+            if ($efs !== NULL) {
+                sort($efs['rincian'], SORT_STRING);
+                $rincian = implode(',', $efs['rincian']);
+            } else {
+                $stats['unmatchedEfsGroups']++;
+            }
+            $exporter->add_row(array_merge($lkp, array(
+                'efs_rincianAkun' => $rincian,
+                'efs_ori' => $efs !== NULL ? $efs['efs_ori'] : NULL,
+                'selisih_ori' => $this->amount->subtract($lkp['lkp_ori'], $efs !== NULL ? $efs['efs_ori'] : '0'),
+                'efs_eqIDR' => $efs !== NULL ? $efs['efs_eqIDR'] : NULL,
+                'selisih_eqIDR' => $this->amount->subtract($lkp['lkp_eqIDR'], $efs !== NULL ? $efs['efs_eqIDR'] : '0')
+            )));
+            $stats['resultRows']++;
+        }
+
         $exporter->save($output_path);
         return $stats;
+    }
+
+    private function group_key($branch, $coa, $currency)
+    {
+        return serialize(array($branch, $coa, $currency));
     }
 
     private function key($value) { return trim((string) $value); }

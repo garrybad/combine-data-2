@@ -1,8 +1,20 @@
 (function () {
   'use strict';
+  var notification = window.Swal ? Swal.mixin({
+    confirmButtonText: 'Mengerti',
+    confirmButtonColor: '#ff6e00',
+    customClass: { popup: 'app-notification' }
+  }) : null;
+  var processing = false;
   var form = document.getElementById('processForm');
+  var outputFormat = document.getElementById('outputFormat');
+  outputFormat.addEventListener('change', function () {
+    document.getElementById('outputFilename').textContent = 'hasil-kombinasi.' + outputFormat.value;
+    document.getElementById('outputFormatHint').textContent = outputFormat.value === 'xlsx'
+      ? 'Format angka dan kode cabang tetap terjaga di Excel.'
+      : 'Data teks dengan pemisah titik koma, untuk impor ke aplikasi lain.';
+  });
   var submit = document.getElementById('submitBtn');
-  var status = document.getElementById('status');
   var statsBox = document.getElementById('stats');
   var statGrid = document.getElementById('statGrid');
   var readyBadge = document.getElementById('readyBadge');
@@ -43,41 +55,87 @@
       e.preventDefault(); zone.classList.remove('dragging');
       var file = e.dataTransfer.files && e.dataTransfer.files[0]; if (!file) return;
       var field = zone.getAttribute('data-field'); var input = inputs[field];
-      try { var dt = new DataTransfer(); dt.items.add(file); input.files = dt.files; setFile(field, file); } catch (err) { alert('Browser tidak mengizinkan file drop untuk field ini. Gunakan tombol Pilih file.'); }
+      try { var dt = new DataTransfer(); dt.items.add(file); input.files = dt.files; setFile(field, file); } catch (err) { showNotification('error', 'Browser tidak mengizinkan file drop untuk field ini. Gunakan tombol Pilih file.'); }
     });
   });
 
-  function showStatus(type, message) { status.className = 'status ' + type; status.textContent = message; }
-  function hideStatus() { status.className = 'status hidden'; status.textContent = ''; }
+  function showNotification(type, message) {
+    if (notification) notification.fire({
+      icon: type,
+      title: type === 'success' ? 'File telah diunduh' : 'Proses belum berhasil',
+      text: message,
+      confirmButtonText: type === 'success' ? 'Selesai' : 'Mengerti'
+    });
+  }
+  function showProcessing() {
+    if (notification) notification.fire({
+      title: 'Memproses file…',
+      allowOutsideClick: false,
+      allowEscapeKey: false,
+      showConfirmButton: false,
+      didOpen: function () { Swal.showLoading(); }
+    });
+  }
   function formatNumber(v) { return new Intl.NumberFormat('id-ID').format(v); }
   function renderStats(s) {
     var items = [
       ['Baris TB', s.tbRows], ['Mapped', s.mappedRows], ['Tidak match akun', s.unmatchedRincianAkun],
-      ['Tidak match COA', s.unmatchedCoaF1], ['Terfilter f5', s.filteredByF5], ['Hasil', s.resultRows],
-      ['Duplikat mapping', s.duplicateMappingKeys], ['Duplikat LKP f2', s.duplicateLkpF2Keys]
+      ['Kelompok tanpa EFS', s.unmatchedEfsGroups], ['Terfilter f5', s.filteredByF5], ['Hasil', s.resultRows],
+      ['Duplikat mapping', s.duplicateMappingKeys], ['TB di luar periode 6', s.filteredByPeriod]
     ];
     statGrid.innerHTML = items.map(function (item) { return '<div class="stat"><small>' + item[0] + '</small><strong>' + formatNumber(item[1]) + '</strong></div>'; }).join('');
     statsBox.classList.remove('hidden');
   }
 
   form.addEventListener('submit', async function (e) {
-    e.preventDefault(); hideStatus(); statsBox.classList.add('hidden');
-    if (!inputs.lkpFile.files.length || !inputs.tbFile.files.length) { showStatus('error', 'Silakan upload kedua file terlebih dahulu.'); return; }
-    submit.disabled = true; submit.dataset.original = submit.textContent; submit.textContent = 'Memproses data…';
+    e.preventDefault();
+    if (processing) return;
+    statsBox.classList.add('hidden');
+    if (!inputs.lkpFile.files.length || !inputs.tbFile.files.length) { showNotification('error', 'Silakan upload kedua file terlebih dahulu.'); return; }
+    processing = true;
+    showProcessing();
+    var selectedFormat = outputFormat.value;
+    outputFormat.disabled = true;
     try {
+      // Fetch the current token/cookie pair, including after earlier POSTs or another tab.
+      var tokenResponse = await fetch(form.dataset.csrfUrl, { cache: 'no-store', credentials: 'same-origin' });
+      if (!tokenResponse.ok) throw new Error('Gagal memperbarui token keamanan. Muat ulang halaman.');
+      var token = await tokenResponse.json();
+      var tokenInput = document.getElementById('csrfToken');
+      tokenInput.name = token.name;
+      tokenInput.value = token.hash;
       var url = form.getAttribute('action') || window.location.href;
-      var response = await fetch(url, { method: 'POST', body: new FormData(form), headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+      var data = new FormData(form);
+      data.set('outputFormat', selectedFormat);
+      var response = await fetch(url, { method: 'POST', body: data, headers: { 'X-Requested-With': 'XMLHttpRequest' } });
       if (!response.ok) {
         var body = await response.json().catch(function () { return null; });
-        throw new Error(body && body.message ? body.message : 'Gagal memproses file.');
+        throw new Error(body && body.message ? body.message : (response.status === 403 ? 'Token keamanan ditolak. Silakan coba proses kembali.' : 'Gagal memproses file (HTTP ' + response.status + ').'));
+      }
+      var contentType = (response.headers.get('Content-Type') || '').toLowerCase();
+      var expectedType = selectedFormat === 'xlsx' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'text/csv';
+      if (contentType.indexOf(expectedType) !== 0 || !(response.headers.get('Content-Disposition') || '').includes('attachment')) {
+        throw new Error('Server tidak mengirim file hasil yang valid. Respons mungkin berisi error PHP.');
       }
       var header = response.headers.get('X-Processing-Stats');
       var blob = await response.blob();
+      var signature = await blob.slice(0, 256).text();
+      if ((selectedFormat === 'xlsx' && signature.slice(0, 2) !== 'PK') ||
+          (selectedFormat === 'csv' && signature.replace(/^\uFEFF/, '').indexOf('branch;coaF1;currency;') !== 0)) {
+        throw new Error('Isi file hasil tidak valid atau mengandung error PHP. Unduhan dibatalkan.');
+      }
+      var filename = 'hasil-kombinasi.' + selectedFormat;
       var url = URL.createObjectURL(blob); var anchor = document.createElement('a');
-      anchor.href = url; anchor.download = 'hasil-kombinasi.csv'; document.body.appendChild(anchor); anchor.click(); anchor.remove(); URL.revokeObjectURL(url);
+      anchor.href = url; anchor.download = filename; document.body.appendChild(anchor); anchor.click(); anchor.remove(); URL.revokeObjectURL(url);
+      // Clear uploaded selections once the valid download has been triggered.
+      // Keep the processing summary visible for review.
+      Object.keys(inputs).forEach(function (field) {
+        inputs[field].value = '';
+        setFile(field, null);
+      });
       if (header) { try { renderStats(JSON.parse(decodeURIComponent(header))); } catch (ignore) { } }
-      showStatus('success', 'Proses selesai. File hasil-kombinasi.csv sudah diunduh.');
-    } catch (err) { showStatus('error', err && err.message ? err.message : 'Terjadi kesalahan saat memproses data.'); }
-    finally { submit.disabled = false; submit.textContent = submit.dataset.original || '⇄  Proses & unduh .CSV'; }
+      showNotification('success', 'Proses selesai.');
+    } catch (err) { showNotification('error', err && err.message ? err.message : 'Terjadi kesalahan saat memproses data.'); }
+    finally { processing = false; outputFormat.disabled = false; submit.disabled = !inputs.lkpFile.files.length || !inputs.tbFile.files.length; submit.textContent = submit.dataset.original || '⇄  Proses & unduh'; }
   });
 })();

@@ -15,6 +15,16 @@ class Reconciliation extends CI_Controller
         $this->load->view('reconciliation/index');
     }
 
+    public function csrf()
+    {
+        $this->output->set_content_type('application/json')
+            ->set_header('Cache-Control: no-store')
+            ->set_output(json_encode(array(
+                'name' => $this->security->get_csrf_token_name(),
+                'hash' => $this->security->get_csrf_hash()
+            )));
+    }
+
     public function process()
     {
         if (!$this->input->is_ajax_request()) {
@@ -23,47 +33,52 @@ class Reconciliation extends CI_Controller
         }
 
         $this->output->set_content_type('application/json');
+        $lkp = $tb = $output = NULL;
+        $buffer_level = ob_get_level();
+        ob_start();
+        // Warnings must become an error response, never HTML inside a download.
+        set_error_handler(function ($severity, $message, $file, $line) {
+            if (!(error_reporting() & $severity)) return FALSE;
+            throw new ErrorException($message, 0, $severity, $file, $line);
+        });
         try {
+            $format = $this->input->post('outputFormat');
+            if ($format === NULL) $format = 'csv';
+            if (!in_array($format, array('csv', 'xlsx'), TRUE)) throw new Exception('Pilih format CSV atau XLSX.');
             $this->validate_file('lkpFile', 'File LKP');
             $this->validate_file('tbFile', 'File Bulanan');
-
             $lkp = $this->store_upload('lkpFile', 'lkp');
             $tb = $this->store_upload('tbFile', 'tb');
-            $output = FCPATH . 'outputs/hasil-rekonsiliasi-' . date('Ymd-His') . '-' . mt_rand(1000, 9999) . '.csv';
-
+            $output = FCPATH . 'outputs/hasil-kombinasi-' . bin2hex(random_bytes(12)) . '.' . $format;
             if (!is_dir(dirname($output))) @mkdir(dirname($output), 0775, TRUE);
             if (!is_writable(dirname($output))) throw new Exception('Folder outputs tidak dapat ditulis.');
-
-            try {
-                $stats = $this->reconciliation_service->process($lkp['path'], $tb['path'], $output);
-            } finally {
-                @unlink($lkp['path']);
-                @unlink($tb['path']);
-            }
-
+            $stats = $this->reconciliation_service->process($lkp['path'], $tb['path'], $output, $format);
             if (!is_file($output)) throw new Exception('File hasil tidak berhasil dibuat.');
-
-            $download_name = 'hasil-kombinasi.csv';
-            $size = filesize($output);
-            $this->output->set_header('Content-Type: text/csv');
-            $this->output->set_header('Content-Disposition: attachment; filename="' . $download_name . '"');
-            $this->output->set_header('Content-Length: ' . $size);
-            $this->output->set_header('Cache-Control: no-store');
-            $this->output->set_header('X-Processing-Stats: ' . rawurlencode(json_encode($stats)));
-            
-            // Keluarkan semua header yang di-set oleh CodeIgniter
-            $this->output->_display();
-            
-            // Alirkan file langsung ke browser tanpa memuatnya ke RAM
-            readfile($output);
-            @unlink($output);
-            
-            // Hentikan eksekusi agar CodeIgniter tidak menimpa output
-            exit;
-        } catch (Exception $e) {
-            log_message('error', 'PROCESS_ERROR: ' . $e->getMessage());
+            if (ob_get_length() > 0) throw new Exception('Server menghasilkan output tidak terduga. File tidak diunduh.');
+        } catch (Throwable $e) {
+            while (ob_get_level() > $buffer_level) ob_end_clean();
+            restore_error_handler();
+            foreach (array($lkp ? $lkp['path'] : NULL, $tb ? $tb['path'] : NULL, $output) as $path) {
+                if ($path && is_file($path)) @unlink($path);
+            }
+            log_message('error', 'PROCESS_ERROR: ' . $e->getMessage() . ' at ' . $e->getFile() . ':' . $e->getLine());
             $this->json_error($e->getMessage(), 500);
+            return;
         }
+        restore_error_handler();
+        while (ob_get_level() > $buffer_level) ob_end_clean();
+        @unlink($lkp['path']);
+        @unlink($tb['path']);
+        // Remove any earlier buffered diagnostics before sending binary/file bytes.
+        while (ob_get_level() > 0) ob_end_clean();
+        header('Content-Type: ' . ($format === 'xlsx' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'text/csv; charset=UTF-8'));
+        header('Content-Disposition: attachment; filename="hasil-kombinasi.' . $format . '"');
+        header('Content-Length: ' . filesize($output));
+        header('Cache-Control: no-store');
+        header('X-Processing-Stats: ' . rawurlencode(json_encode($stats)));
+        readfile($output);
+        @unlink($output);
+        exit;
     }
 
     private function validate_file($field, $label)

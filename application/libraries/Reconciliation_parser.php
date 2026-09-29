@@ -50,7 +50,7 @@ class Reconciliation_parser
             }
             $on_row(array(
                 'f1' => $values[0], 'f2' => $values[1], 'f3' => $values[2],
-                'f4' => $values[3], 'f5' => $values[4], 'f7' => $values[6], 'f8' => $values[7]
+                'f4' => $values[3], 'f5' => $values[4], 'f6' => $values[5], 'f7' => $values[6], 'f8' => $values[7]
             ), $line_no);
         }
     }
@@ -91,6 +91,6 @@ class Reconciliation_parser
     public function extract_rincian_akun($concatenated_segments)
     {
         $parts = explode('-', $concatenated_segments);
-        return isset($parts[2]) ? trim($parts[2]) : '';
+        return trim($parts[min(2, count($parts) - 1)]);
     }
 }

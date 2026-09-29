@@ -3,11 +3,19 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 
 class Amount_math
 {
+    public function sum($left, $right)
+    {
+        $a = $this->parse($left);
+        $b = $this->parse($right);
+        if ($a === NULL || $b === NULL) throw new Exception("Nilai amount tidak valid: '$left', '$right'.");
+        return $this->format($this->add($a, $b));
+    }
+
     public function subtract($base, $f7)
     {
         $a = $this->parse($base);
         $b = $this->parse($f7);
-        if ($a === NULL || $b === NULL) throw new Exception("Nilai amount tidak valid: BASE_AMOUNT='$base', f7='$f7'.");
+        if ($a === NULL || $b === NULL) throw new Exception("Nilai amount tidak valid: left='$base', right='$f7'.");
         return $this->format($this->add($a, $this->negate($b)));
     }
 

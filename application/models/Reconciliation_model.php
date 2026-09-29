@@ -22,7 +22,7 @@ class Reconciliation_model extends CI_Model
         $penjelasan = $find('penjelasanCOA');
         $coa = $find('coaF1');
         $missing = array();
-        foreach (array('rincianAkun' => $rincian, 'namaCOA' => $nama, 'penjelasanCOA' => $penjelasan, 'coaF1' => $coa) as $name => $column) {
+        foreach (array('rincianAkun' => $rincian, 'coaF1' => $coa) as $name => $column) {
             if (!$column) $missing[] = $name;
         }
         if ($missing) throw new Exception('Kolom mappingEfs tidak lengkap. Dibutuhkan: ' . implode(', ', $missing) . '.');
@@ -32,9 +32,9 @@ class Reconciliation_model extends CI_Model
             $copy = array();
             foreach ($row as $key => $value) $copy[$key] = trim((string) ($value === NULL ? '' : $value));
             $copy['rincianAkun'] = trim((string) ($row[$rincian] === NULL ? '' : $row[$rincian]));
-            $copy['namaCOA'] = trim((string) ($row[$nama] === NULL ? '' : $row[$nama]));
-            $copy['penjelasanCOA'] = trim((string) ($row[$penjelasan] === NULL ? '' : $row[$penjelasan]));
-            $copy['coaF1'] = trim((string) ($row[$coa] === NULL ? '' : $row[$coa]));
+            $copy['namaCOA'] = trim((string) ($nama === NULL || $row[$nama] === NULL ? '' : $row[$nama]));
+            $copy['penjelasanCOA'] = trim((string) ($penjelasan === NULL || $row[$penjelasan] === NULL ? '' : $row[$penjelasan]));
+            $copy['coaF1'] = $row[$coa] === NULL ? NULL : trim((string) $row[$coa]);
             $normalized[] = $copy;
         }
         return $normalized;
