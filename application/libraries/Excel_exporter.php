@@ -4,6 +4,7 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 class Excel_exporter
 {
     private $handle;
+    private $buffer;
     private $format;
     private $temp_path;
     private $row_number = 0;
@@ -25,6 +26,9 @@ class Excel_exporter
         $this->temp_path = $directory . '/reconciliation-temp-' . bin2hex(random_bytes(16));
         $this->handle = fopen($this->temp_path, 'x+b');
         if (!$this->handle) throw new Exception('File sementara di folder outputs tidak dapat dibuat.');
+        // Bound memory to about 1 MB and batch small row writes to disk.
+        $this->buffer = fopen('php://memory', 'w+b');
+        if (!$this->buffer) throw new Exception('Buffer hasil tidak dapat dibuat.');
         if ($format === 'xlsx') {
             $this->write('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><cols><col min="1" max="3" width="18" customWidth="1"/><col min="4" max="4" width="35" customWidth="1"/><col min="5" max="10" width="22" customWidth="1"/></cols><sheetData>');
             $this->write_xlsx_row($this->headers, TRUE);
@@ -44,12 +48,23 @@ class Excel_exporter
 
     private function write($text)
     {
-        if (!$this->handle || fwrite($this->handle, $text) !== strlen($text)) throw new Exception('Gagal menulis file hasil.');
+        if (!$this->buffer || fwrite($this->buffer, $text) !== strlen($text)) throw new Exception('Gagal menulis file hasil.');
+        if (ftell($this->buffer) >= 1048576) $this->flush_buffer();
     }
 
     private function write_csv($values)
     {
-        if (fputcsv($this->handle, $values, ';', '"', '\\') === FALSE) throw new Exception('Gagal menulis CSV.');
+        if (fputcsv($this->buffer, $values, ';', '"', '\\') === FALSE) throw new Exception('Gagal menulis CSV.');
+        if (ftell($this->buffer) >= 1048576) $this->flush_buffer();
+    }
+
+    private function flush_buffer()
+    {
+        $length = ftell($this->buffer);
+        rewind($this->buffer);
+        if (stream_copy_to_stream($this->buffer, $this->handle) !== $length) throw new Exception('Gagal menyimpan buffer hasil.');
+        if (!ftruncate($this->buffer, 0)) throw new Exception('Gagal mengosongkan buffer hasil.');
+        rewind($this->buffer);
     }
 
     private function write_xlsx_row($values, $header = FALSE)
@@ -73,6 +88,7 @@ class Excel_exporter
     public function save($path)
     {
         if ($this->format === 'csv') {
+            $this->flush_buffer();
             rewind($this->handle);
             $out = fopen($path, 'wb');
             if (!$out) throw new Exception('File hasil tidak dapat dibuka.');
@@ -81,6 +97,7 @@ class Excel_exporter
             } finally { fclose($out); }
         } else {
             $this->write('</sheetData><autoFilter ref="A1:J' . $this->row_number . '"/></worksheet>');
+            $this->flush_buffer();
             fflush($this->handle);
             $zip = new ZipArchive();
             if ($zip->open($path, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== TRUE) throw new Exception('Gagal membuat XLSX.');
@@ -101,6 +118,7 @@ class Excel_exporter
 
     private function cleanup()
     {
+        if (is_resource($this->buffer)) fclose($this->buffer);
         if (is_resource($this->handle)) fclose($this->handle);
         if ($this->temp_path && is_file($this->temp_path)) unlink($this->temp_path);
         $this->temp_path = NULL;

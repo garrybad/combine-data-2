@@ -3,6 +3,42 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 
 class Amount_math
 {
+    // Accumulators start at integer 0 and store cents, never floating point.
+    // Amounts outside the integer range fall back to decimal strings.
+    public function accumulate($total, $value)
+    {
+        // Common amounts (up to two decimals) can become integer cents directly.
+        // Keep the general decimal parser for larger values and extra precision.
+        $value = trim((string) $value);
+        if ($value === '') return $total;
+        if (is_int($total) && preg_match('/^[+-]?[0-9]+(?:\.[0-9]{1,2})?$/D', $value)) {
+            $point = strpos($value, '.');
+            $digits = $point === FALSE ? $value . '00'
+                : str_replace('.', '', $value) . (strlen($value) - $point === 2 ? '0' : '');
+            $safe_digits = PHP_INT_SIZE >= 8 ? 18 : 9;
+            if (strlen(ltrim($digits, '+-0')) <= $safe_digits) {
+                $cents = (int) $digits;
+                if (abs($total) <= PHP_INT_MAX - abs($cents)) return $total + $cents;
+            }
+        }
+        return $this->sum($this->format_accumulator($total), $value);
+    }
+
+    public function format_accumulator($total)
+    {
+        if (!is_int($total)) return $total;
+        $digits = str_pad((string) abs($total), 3, '0', STR_PAD_LEFT);
+        return ($total < 0 ? '-' : '') . substr($digits, 0, -2) . '.' . substr($digits, -2);
+    }
+
+    public function subtract_accumulators($left, $right)
+    {
+        if (is_int($left) && is_int($right) && abs($left) <= PHP_INT_MAX - abs($right)) {
+            return $this->format_accumulator($left - $right);
+        }
+        return $this->subtract($this->format_accumulator($left), $this->format_accumulator($right));
+    }
+
     public function sum($left, $right)
     {
         $a = $this->parse($left);
@@ -37,6 +73,15 @@ class Amount_math
 
     private function add($a, $b)
     {
+        // Conservative digit bounds keep both operands and their sum in integers.
+        // Larger amounts retain the arbitrary-precision string implementation.
+        $safe_digits = PHP_INT_SIZE >= 8 ? 18 : 9;
+        if (strlen($a['digits']) <= $safe_digits && strlen($b['digits']) <= $safe_digits) {
+            $left = (int) $a['digits'];
+            $right = (int) $b['digits'];
+            $total = ($a['negative'] ? -$left : $left) + ($b['negative'] ? -$right : $right);
+            return array('negative' => $total < 0, 'digits' => (string) abs($total));
+        }
         if ($a['negative'] === $b['negative']) return array('negative' => $a['negative'], 'digits' => $this->add_int($a['digits'], $b['digits']));
         $cmp = $this->cmp_int($a['digits'], $b['digits']);
         if ($cmp === 0) return array('negative' => FALSE, 'digits' => '0');
@@ -69,7 +114,7 @@ class Amount_math
     {
         $a = ltrim($a, '0') ?: '0'; $b = ltrim($b, '0') ?: '0';
         if (strlen($a) !== strlen($b)) return strlen($a) > strlen($b) ? 1 : -1;
-        return $a === $b ? 0 : ($a > $b ? 1 : -1);
+        return strcmp($a, $b);
     }
 
     private function format($n)

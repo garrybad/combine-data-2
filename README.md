@@ -7,9 +7,9 @@ Migrated from the supplied Next.js application to CodeIgniter 3 for the target s
 1. Parse the tab-delimited TB file, keeping only `PERIOD_NUM = 6`.
 2. Extract branch from the first segment and rincianAkun from the third segment of `CONCATENATED_SEGMENTS`, then join to `mappingEfs.rincianAkun`.
 3. Exclude null `coaF1` mappings and aggregate EFS by branch, coaF1, and currency: sum AMOUNT and BASE_AMOUNT, with distinct sorted rincianAkun values.
-4. Parse LKP as `f1 | f2 | f3 | f4 | f5 | f6 | f7 | f8`. Group by f5 (branch), f2 (coaF1), and f4 (currency). Sum f6 and f7 only when f8 is `0000`; retain zero-total groups.
-5. LEFT JOIN from LKP to EFS on all three keys, excluding branch `0000`, ordered by branch, coaF1, currency. EFS-only groups are omitted; missing EFS values are blank in CSV.
-6. Calculate both differences as LKP minus EFS (missing EFS treated as zero), using exact two-decimal string arithmetic.
+4. Parse LKP as `f1 | f2 | f3 | f4 | f5 | f6 | f7 | f8`. Keep only rows with f8 = `0000` before grouping by f5 (branch), f2 (coaF1), and normalized f4 (currency), then sum f6 and f7.
+5. Normalize EFS and LKP currency with UPPER(TRIM(currency)). Combine LKP LEFT JOIN EFS with EFS-only groups (UNION ALL), matching branch, coaF1, and currency. Exclude branch `0000` from both sides and order the combined result by those three keys. Currency mismatches remain as separate rows.
+6. For matching groups, calculate LKP minus EFS using exact two-decimal string arithmetic. LKP-only groups have NULL EFS values and differences. EFS-only groups have NULL LKP values and differences of 0 minus EFS. NULL values export as blank cells in CSV/XLSX.
 7. Choose CSV or XLSX in the form. Both formats export 10 columns to `hasil-kombinasi.csv` or `hasil-kombinasi.xlsx`: branch, coaF1, currency, efs_rincianAkun, lkp_ori, efs_ori, selisih_ori, lkp_eqIDR, efs_eqIDR, selisih_eqIDR.
 
 XLSX uses a temporary worksheet file and ZIP packaging to avoid keeping spreadsheet cells in memory. It preserves leading zeroes in identity columns and uses numeric amount cells. PHP ZipArchive is required; the outputs directory must be writable. XLSX is limited to 1,048,575 data rows (plus the header); use CSV for larger results. CSV uses semicolons; import using that delimiter if Excel does not separate columns automatically.

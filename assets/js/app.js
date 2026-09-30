@@ -9,8 +9,10 @@
   var form = document.getElementById('processForm');
   var outputFormat = document.getElementById('outputFormat');
   outputFormat.addEventListener('change', function () {
-    document.getElementById('outputFilename').textContent = 'hasil-kombinasi.' + outputFormat.value;
-    document.getElementById('outputFormatHint').textContent = outputFormat.value === 'xlsx'
+    var filenameLabel = document.getElementById('outputFilename');
+    if (filenameLabel) filenameLabel.textContent = 'hasil-kombinasi.' + outputFormat.value;
+    var hint = document.getElementById('outputFormatHint');
+    if (hint) hint.textContent = outputFormat.value === 'xlsx'
       ? 'Format angka dan kode cabang tetap terjaga di Excel.'
       : 'Data teks dengan pemisah titik koma, untuk impor ke aplikasi lain.';
   });
@@ -76,14 +78,35 @@
       didOpen: function () { Swal.showLoading(); }
     });
   }
-  function formatNumber(v) { return new Intl.NumberFormat('id-ID').format(v); }
-  function renderStats(s) {
+  function formatNumber(v) { return typeof v === 'number' && isFinite(v) ? new Intl.NumberFormat('id-ID').format(v) : '—'; }
+  function renderStats(s, requestSeconds) {
     var items = [
       ['Baris TB', s.tbRows], ['Mapped', s.mappedRows], ['Tidak match akun', s.unmatchedRincianAkun],
       ['Kelompok tanpa EFS', s.unmatchedEfsGroups], ['Terfilter f5', s.filteredByF5], ['Hasil', s.resultRows],
       ['Duplikat mapping', s.duplicateMappingKeys], ['TB di luar periode 6', s.filteredByPeriod]
     ];
     statGrid.innerHTML = items.map(function (item) { return '<div class="stat"><small>' + item[0] + '</small><strong>' + formatNumber(item[1]) + '</strong></div>'; }).join('');
+    var durations = [['Upload sampai hasil diterima', requestSeconds]];
+    if (s.timingsSeconds) {
+      var t = s.timingsSeconds;
+      durations.push(['Pengolahan di server', t.total], ['Mapping akun', t.mapping],
+        ['Data LKP', t.lkp], ['Data bulanan', t.tb], ['Pengurutan & ekspor', t.sortAndExport]);
+      // The remainder includes transfer, queuing, and work outside the service.
+      // It must not be presented as upload time alone.
+      durations.push(['Transfer & waktu lainnya', Math.max(0, requestSeconds - t.total)]);
+    }
+    durations.forEach(function (item) {
+      if (typeof item[1] !== 'number' || !isFinite(item[1])) return;
+      var cell = document.createElement('div');
+      cell.className = 'stat';
+      var label = document.createElement('small');
+      label.textContent = item[0];
+      var value = document.createElement('strong');
+      value.textContent = formatNumber(Math.round(item[1] * 10) / 10) + ' detik';
+      cell.appendChild(label);
+      cell.appendChild(value);
+      statGrid.appendChild(cell);
+    });
     statsBox.classList.remove('hidden');
   }
 
@@ -107,6 +130,7 @@
       var url = form.getAttribute('action') || window.location.href;
       var data = new FormData(form);
       data.set('outputFormat', selectedFormat);
+      var requestStarted = performance.now();
       var response = await fetch(url, { method: 'POST', body: data, headers: { 'X-Requested-With': 'XMLHttpRequest' } });
       if (!response.ok) {
         var body = await response.json().catch(function () { return null; });
@@ -119,6 +143,7 @@
       }
       var header = response.headers.get('X-Processing-Stats');
       var blob = await response.blob();
+      var requestSeconds = (performance.now() - requestStarted) / 1000;
       var signature = await blob.slice(0, 256).text();
       if ((selectedFormat === 'xlsx' && signature.slice(0, 2) !== 'PK') ||
           (selectedFormat === 'csv' && signature.replace(/^\uFEFF/, '').indexOf('branch;coaF1;currency;') !== 0)) {
@@ -133,9 +158,17 @@
         inputs[field].value = '';
         setFile(field, null);
       });
-      if (header) { try { renderStats(JSON.parse(decodeURIComponent(header))); } catch (ignore) { } }
+      var summary = {};
+      if (header) { try { summary = JSON.parse(decodeURIComponent(header)); } catch (ignore) { } }
+      renderStats(summary, requestSeconds);
       showNotification('success', 'Proses selesai.');
-    } catch (err) { showNotification('error', err && err.message ? err.message : 'Terjadi kesalahan saat memproses data.'); }
+    } catch (err) {
+      var message = err && err.message ? err.message : 'Terjadi kesalahan saat memproses data.';
+      if (err && err.name === 'TypeError' && /fetch|network|load failed/i.test(message)) {
+        message = 'Koneksi ke server terputus sehingga hasil belum diterima. Pastikan jaringan atau VPN tersambung dan komputer tidak sleep. Proses di server mungkin masih berjalan; tunggu sebelum mencoba kembali.';
+      }
+      showNotification('error', message);
+    }
     finally { processing = false; outputFormat.disabled = false; submit.disabled = !inputs.lkpFile.files.length || !inputs.tbFile.files.length; submit.textContent = submit.dataset.original || '⇄  Proses & unduh'; }
   });
 })();

@@ -5,6 +5,16 @@ class Reconciliation_parser
 {
     public function parse_delimited_line($line, $delimiter)
     {
+        // Most source rows have no quoted fields; avoid a PHP loop per byte.
+        if (strpos($line, '"') === FALSE) return array_map('trim', explode($delimiter, $line));
+        // Fully quoted exports are common. Split at field boundaries in native
+        // code; retain the general parser for embedded delimiters/escaped quotes.
+        if (substr($line, 0, 1) === '"' && substr($line, -1) === '"') {
+            $fields = explode('"' . $delimiter . '"', substr($line, 1, -1));
+            if (strpos(implode('', $fields), '"') === FALSE) {
+                return array_map('trim', $fields);
+            }
+        }
         $values = array();
         $current = '';
         $in_quotes = FALSE;
@@ -55,10 +65,11 @@ class Reconciliation_parser
         }
     }
 
-    public function parse_tb_handle($handle, callable $on_row)
+    public function parse_tb_handle($handle, callable $on_row, $required_only = FALSE)
     {
         $line_no = 0;
         $headers = NULL;
+        $selected = array();
         $required = array('CONCATENATED_SEGMENTS', 'PERIOD_NUM', 'CURRENCY_CODE', 'AMOUNT', 'BASE_AMOUNT');
 
         while (($line = fgets($handle)) !== FALSE) {
@@ -73,15 +84,21 @@ class Reconciliation_parser
                         throw new Exception("Kolom wajib '$required_header' tidak ditemukan pada file TB Juni.");
                     }
                 }
+                foreach ($headers as $index => $header) {
+                    if (!$required_only || in_array($header, $required, TRUE)) $selected[$header] = $index;
+                }
                 continue;
             }
 
-            $values = $this->parse_delimited_line($line, "\t");
+            // Wide monthly files often contain many unused columns. Still validate
+            // their count, but only trim and construct the fields the service needs.
+            $values = $required_only && strpos($line, '"') === FALSE
+                ? explode("\t", $line) : $this->parse_delimited_line($line, "\t");
             if (count($values) !== count($headers)) {
                 throw new Exception('Format file TB Juni tidak valid pada baris ' . $line_no . '. Ditemukan ' . count($values) . ' kolom, seharusnya ' . count($headers) . ' kolom.');
             }
             $row = array();
-            foreach ($headers as $index => $header) $row[$header] = isset($values[$index]) ? $values[$index] : '';
+            foreach ($selected as $header => $index) $row[$header] = trim($values[$index]);
             $on_row($row, $line_no);
         }
 
