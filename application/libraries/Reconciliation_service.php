@@ -26,7 +26,7 @@ class Reconciliation_service
             $key = $this->key($row['rincianAkun']);
             if ($key === '') continue;
             if (!isset($mapping_by_rincian[$key])) $mapping_by_rincian[$key] = array();
-            $mapping_by_rincian[$key][] = $row;
+            $mapping_by_rincian[$key][] = $row['coaF1'] === NULL ? NULL : $this->key($row['coaF1']);
         }
 
         $duplicate_mapping = 0;
@@ -41,11 +41,12 @@ class Reconciliation_service
         if (!$lkp_handle) throw new Exception('File LKP tidak dapat dibuka.');
         try {
             $this->parser->parse_lkp_handle($lkp_handle, function ($row) use (&$lkp_groups, &$stats) {
-                $branch = $this->key($row['f5']);
+                // Parser already trims every source field.
+                $branch = $row['f5'];
                 if ($branch === '0000') { $stats['filteredByF5']++; return; }
-                if ($this->key($row['f8']) !== '0000') return;
-                $coa = $this->key($row['f2']);
-                $currency = strtoupper($this->key($row['f4']));
+                if ($row['f8'] !== '0000') return;
+                $coa = $row['f2'];
+                $currency = strtoupper($row['f4']);
                 $key = $this->group_key($branch, $coa, $currency);
                 if (!isset($lkp_groups[$key])) {
                     $lkp_groups[$key] = array('branch' => $branch, 'coaF1' => $coa,
@@ -73,12 +74,13 @@ class Reconciliation_service
                 $mappings = isset($mapping_by_rincian[$rincian]) ? $mapping_by_rincian[$rincian] : array();
                 if (!$mappings) { $stats['unmatchedRincianAkun']++; return; }
                 $stats['mappedRows']++;
-                foreach ($mappings as $mapping) {
-                    if ($mapping['coaF1'] === NULL) continue;
-                    $key = $this->group_key($branch, $this->key($mapping['coaF1']), strtoupper($this->key($row['CURRENCY_CODE'])));
+                $currency = strtoupper($row['CURRENCY_CODE']);
+                foreach ($mappings as $coa) {
+                    if ($coa === NULL) continue;
+                    $key = $this->group_key($branch, $coa, $currency);
                     if (!isset($efs_groups[$key])) {
-                        $efs_groups[$key] = array('branch' => $branch, 'coaF1' => $this->key($mapping['coaF1']),
-                            'currency' => strtoupper($this->key($row['CURRENCY_CODE'])),
+                        $efs_groups[$key] = array('branch' => $branch, 'coaF1' => $coa,
+                            'currency' => $currency,
                             'rincian' => array(), 'efs_ori' => 0, 'efs_eqIDR' => 0);
                     }
                     $efs_groups[$key]['rincian'][$rincian] = $rincian;
@@ -136,7 +138,7 @@ class Reconciliation_service
             'saveFile' => round($finished - $write_done, 3),
             'total' => round($finished - $started, 3)
         );
-        $stats['processorVersion'] = '2026-09-30.2';
+        $stats['processorVersion'] = '2026-09-30.4';
         $stats['runtime'] = array(
             'phpVersion' => PHP_VERSION,
             'integerBits' => PHP_INT_SIZE * 8,

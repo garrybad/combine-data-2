@@ -7,14 +7,14 @@ class Amount_math
     // Amounts outside the integer range fall back to decimal strings.
     public function accumulate($total, $value)
     {
-        // Common amounts (up to two decimals) can become integer cents directly.
-        // Keep the general decimal parser for larger values and extra precision.
+        // Convert decimal exports directly to cents, including trailing precision.
+        // Match parse(): truncate each input to two decimals, never round floats.
         $value = trim((string) $value);
         if ($value === '') return $total;
-        if (is_int($total) && preg_match('/^[+-]?[0-9]+(?:\.[0-9]{1,2})?$/D', $value)) {
+        if (is_int($total) && preg_match('/^[+-]?[0-9]+(?:\.[0-9]+)?$/D', $value)) {
             $point = strpos($value, '.');
             $digits = $point === FALSE ? $value . '00'
-                : str_replace('.', '', $value) . (strlen($value) - $point === 2 ? '0' : '');
+                : substr($value, 0, $point) . substr($value . '0', $point + 1, 2);
             $safe_digits = PHP_INT_SIZE >= 8 ? 18 : 9;
             if (strlen(ltrim($digits, '+-0')) <= $safe_digits) {
                 $cents = (int) $digits;

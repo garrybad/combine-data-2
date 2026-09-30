@@ -90,6 +90,13 @@ try {
     ) as $case) check($ci->amount_math->sum($case[0], $case[1]), $case[2]);
     $total = 0;
     $reference = '0.00';
+    // Extended-precision exports keep the integer fast path and truncate per row.
+    foreach (array('123.456789' => '123.45', '-0.009000' => '0.00',
+        '+0002.309999' => '2.30', '-123.459999' => '-123.45') as $value => $expected) {
+        $cents = $ci->amount_math->accumulate(0, $value);
+        check(is_int($cents), TRUE);
+        check($ci->amount_math->format_accumulator($cents), $expected);
+    }
     foreach (array('1.239', '-0.019', '', '+0002.30', '99999999999999999.99',
         '0.01', '-99999999999999999.99', '-3.51', '-100000000000000000000.02',
         '100000000000000000000.01') as $value) {

@@ -17,6 +17,7 @@ $ci->Reconciliation_model = new BenchmarkMapping();
 $lkp = tempnam(sys_get_temp_dir(), 'bench-lkp-');
 $tb = tempnam(sys_get_temp_dir(), 'bench-tb-');
 $out = tempnam(sys_get_temp_dir(), 'bench-out-');
+$precision = in_array('--extended-precision', $argv, TRUE) ? '000000' : '';
 try {
     $l = fopen($lkp, 'wb');
     $t = fopen($tb, 'wb');
@@ -24,8 +25,8 @@ try {
         fwrite($t, "CONCATENATED_SEGMENTS\tPERIOD_NUM\tCURRENCY_CODE\tAMOUNT\tBASE_AMOUNT\n");
         for ($i = 0; $i < 520010; $i++) {
             $branch = sprintf('%06d', $i % 158470 + 1);
-            fwrite($l, "x|100|x|USD|$branch|123456.78|987654321.12|0000\n");
-            fwrite($t, "$branch-x-10\t6\tUSD\t123450.23\t987654000.56\n");
+            fwrite($l, "x|100|x|USD|$branch|123456.78{$precision}|987654321.12{$precision}|0000\n");
+            fwrite($t, "$branch-x-10\t6\tUSD\t123450.23{$precision}\t987654000.56{$precision}\n");
         }
     } finally { fclose($l); fclose($t); }
     $service = new Reconciliation_service();
@@ -39,6 +40,7 @@ try {
         throw new Exception('Worksheet content changed.');
     }
     echo json_encode($stats, JSON_PRETTY_PRINT) . PHP_EOL;
+    echo 'XLSX bytes: ' . filesize($out) . PHP_EOL;
     echo 'Worksheet SHA-256: ' . $hash . PHP_EOL;
 } finally {
     foreach (array($lkp, $tb, $out) as $path) if (is_file($path)) unlink($path);

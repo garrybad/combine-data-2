@@ -111,7 +111,13 @@ class Excel_exporter
             foreach ($files as $name => $xml) {
                 if (!$zip->addFromString($name, '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' . $xml)) throw new Exception('Gagal menulis komponen XLSX.');
             }
-            if (!$zip->addFile($this->temp_path, 'xl/worksheets/sheet1.xml') || !$zip->close()) throw new Exception('Gagal menyimpan XLSX.');
+            if (!$zip->addFile($this->temp_path, 'xl/worksheets/sheet1.xml')) throw new Exception('Gagal menyimpan XLSX.');
+            // Large worksheet XML dominates packaging time. Fast DEFLATE keeps
+            // the same worksheet contents with a modest increase in file size.
+            if (!$zip->setCompressionName('xl/worksheets/sheet1.xml', ZipArchive::CM_DEFLATE, 1)) {
+                throw new Exception('Gagal mengatur kompresi XLSX.');
+            }
+            if (!$zip->close()) throw new Exception('Gagal menyimpan XLSX.');
         }
         $this->cleanup();
     }

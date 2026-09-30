@@ -18,6 +18,23 @@ Processing warnings/errors return JSON instead of being included in the download
 
 Run regression checks with `php tests/reconciliation.php`.
 
+Run the synthetic performance check with `php -d memory_limit=512M tests/benchmark_reconciliation.php`.
+It processes 520,010 rows per input and verifies the worksheet content hash for
+158,470 result rows. XLSX uses DEFLATE level 1 to reduce packaging time at the
+cost of a larger download. Backend timings exclude upload/download, web-server
+queuing, and (in this synthetic benchmark) the real database mapping query;
+measure production requests before treating a runtime target as guaranteed.
+Pass `--extended-precision` to exercise decimal exports with trailing precision;
+the expected worksheet hash stays the same.
+
+For production performance, check the `runtime` object in `x-processing-stats`
+from an actual web request (CLI may use different PHP settings). If Xdebug is
+loaded, benchmark with its `zend_extension` entry disabled in the PHP-FPM INI
+configuration and restart the applicable FPM service. Enable installed OPcache
+in that same runtime (`opcache.enable=1`). These are server configuration changes,
+not application `ini_set` changes. Compare the same files and output format before
+and after; Xdebug being loaded alone does not prove it caused all the latency.
+
 ## Requirements
 
 - PHP 7.2.x
