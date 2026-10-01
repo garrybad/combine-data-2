@@ -125,6 +125,7 @@
             </svg>
           </div>
         </div>
+        <p id="trendNote" style="font-size:12px; color:#777; margin-top:10px;"></p>
         <div class="chart-container"
           style="position: relative; height:250px; width:100%; margin-top: 15px; background: #fff; border: 1px solid #e8e4df; border-radius: 12px; padding: 15px;">
           <canvas id="selisihChart"></canvas>
@@ -143,17 +144,6 @@
         <div class="stat-grid" id="statGridEfs"></div>
         <h3 class="stat-section-title">Gabungan / Hasil</h3>
         <div class="stat-grid" id="statGridResult"></div>
-        <h3 class="stat-section-title">Tren Hari Ini (Contoh)</h3>
-        <label for="trendMetric">Tampilkan:</label>
-        <select id="trendMetric" class="trend-select">
-          <option value="idr">Selisih IDR</option>
-          <option value="ori">Selisih Original</option>
-        </select>
-        <p id="trendNote"></p>
-        <div class="chart-container"
-          style="position: relative; height:250px; width:100%; margin-top: 15px; background: #fff; border: 1px solid #e8e4df; border-radius: 12px; padding: 15px;">
-          <canvas id="selisihChart"></canvas>
-        </div>
       </section>
     </div>
   </main>

@@ -82,14 +82,24 @@
     if (window.Chart) {
       var ctx = document.getElementById('selisihChart');
       if (ctx) {
+        var dummyData = [
+          { "date": "2026-09-29", "total_selisih_ori": 2237836500, "total_selisih_eqIDR": 1766856500 },
+          { "date": "2026-09-30", "total_selisih_ori": -60000,      "total_selisih_eqIDR": -264000000 },
+          { "date": "2026-10-01", "total_selisih_ori": 200000,      "total_selisih_eqIDR": 725000000  }
+        ];
+        var metricEl = document.getElementById('trendMetric');
+        var original = metricEl ? metricEl.value === 'ori' : false;
+        var unit = original ? 'Original' : 'IDR';
+        var labels  = dummyData.map(function(d) { return d.date; });
+        var values  = dummyData.map(function(d) { return original ? d.total_selisih_ori : d.total_selisih_eqIDR; });
         if (selisihChartInstance) selisihChartInstance.destroy();
         selisihChartInstance = new Chart(ctx, {
           type: 'line',
           data: {
-            labels: ['1 Jun', '2 Jun', '3 Jun', '4 Jun', '5 Jun', '6 Jun', '7 Jun'],
+            labels: labels,
             datasets: [{
-              label: 'Selisih Harian',
-              data: [500000, -200000, 150000, 0, 750000, -100000, 300000],
+              label: 'Selisih ' + unit,
+              data: values,
               borderColor: '#ff6e00',
               backgroundColor: 'rgba(255, 110, 0, 0.1)',
               borderWidth: 2,
@@ -107,7 +117,7 @@
               tooltip: {
                 callbacks: {
                   label: function (context) {
-                    return 'Selisih: Rp ' + new Intl.NumberFormat('id-ID').format(context.raw);
+                    return 'Selisih: ' + formatNumber(context.raw);
                   }
                 }
               }
@@ -116,7 +126,8 @@
               y: {
                 ticks: {
                   callback: function (value) {
-                    if (value >= 1000 || value <= -1000) return (value / 1000) + 'k';
+                    if (value >= 1000000 || value <= -1000000) return (value / 1000000).toFixed(1) + 'M';
+                    if (value >= 1000    || value <= -1000)    return (value / 1000).toFixed(0) + 'k';
                     return value;
                   }
                 }
@@ -139,9 +150,19 @@
   }
   function renderExampleTrend() {
     var original = document.getElementById('trendMetric').value === 'ori';
-    var unit = original ? 'USD' : 'IDR';
-    document.getElementById('trendNote').textContent = 'Data contoh hari ini (' + new Date().toLocaleDateString('id-ID') +
-      '), bukan hasil file. ' + (original ? 'Original menggunakan USD saja; mata uang berbeda tidak dijumlahkan.' : 'Nominal ekuivalen IDR.');
+    var unit = original ? 'Original' : 'IDR';
+    
+    var dummyData = [
+      { "date": "2026-09-29", "total_selisih_ori": 2237836500, "total_selisih_eqIDR": 1766856500 },
+      { "date": "2026-09-30", "total_selisih_ori": -60000, "total_selisih_eqIDR": -264000000 },
+      { "date": "2026-10-01", "total_selisih_ori": 200000, "total_selisih_eqIDR": 725000000 }
+    ];
+
+    var labels = dummyData.map(function(d) { return d.date; });
+    var dataOri = dummyData.map(function(d) { return d.total_selisih_ori; });
+    var dataIdr = dummyData.map(function(d) { return d.total_selisih_eqIDR; });
+
+    document.getElementById('trendNote').textContent = 'Data contoh selisih harian, bukan hasil pemrosesan file saat ini.';
     if (!window.Chart) {
       document.getElementById('trendNote').textContent += ' Grafik tidak tersedia karena pustaka grafik belum dimuat.';
       return;
@@ -150,10 +171,10 @@
     selisihChartInstance = new Chart(document.getElementById('selisihChart'), {
       type: 'line',
       data: {
-        labels: ['08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00'],
+        labels: labels,
         datasets: [{
-          label: 'Contoh selisih ' + unit,
-          data: original ? [30, -12, 9, 0, 45, -6, 18] : [500000, -200000, 150000, 0, 750000, -100000, 300000],
+          label: 'Selisih ' + unit,
+          data: original ? dataOri : dataIdr,
           borderColor: '#ff6e00', backgroundColor: 'rgba(255,110,0,0.1)', borderWidth: 2,
           fill: true, tension: 0.3, pointRadius: 4
         }]
@@ -163,13 +184,13 @@
         plugins: {
           legend: { display: false }, tooltip: {
             callbacks: {
-              label: function (context) { return 'Contoh selisih: ' + unit + ' ' + formatNumber(context.raw); }
+              label: function (context) { return 'Selisih: ' + formatNumber(context.raw); }
             }
           }
         },
         scales: {
           y: { title: { display: true, text: 'Selisih ' + unit } },
-          x: { title: { display: true, text: 'Jam (contoh)' } }
+          x: { title: { display: true, text: 'Tanggal' } }
         }
       }
     });
