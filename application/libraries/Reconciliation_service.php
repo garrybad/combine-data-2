@@ -48,12 +48,13 @@ class Reconciliation_service
             'duplicateMappingKeys' => $duplicate_mapping,
             'lkpRows' => 0
         );
+        $f1_total_idr = 0;
         $lkp_groups = array();
         $lkp_handle = fopen($lkp_path, 'rb');
         if (!$lkp_handle)
             throw new Exception('File LKP tidak dapat dibuka.');
         try {
-            $this->parser->parse_lkp_handle($lkp_handle, function ($row) use (&$lkp_groups, &$stats) {
+            $this->parser->parse_lkp_handle($lkp_handle, function ($row) use (&$lkp_groups, &$stats, &$f1_total_idr) {
                 $stats['lkpRows']++;
                 // Parser already trims every source field.
                 $branch = $row['f5'];
@@ -64,6 +65,7 @@ class Reconciliation_service
                 if ($branch === '0000') {
                     return;
                 }
+                $f1_total_idr = $this->amount->accumulate($f1_total_idr, $row['f7']);
                 $coa = $row['f2'];
                 $currency = strtoupper($row['f4']);
                 $key = $this->group_key($branch, $coa, $currency);
@@ -146,6 +148,8 @@ class Reconciliation_service
         // Native sorting avoids millions of PHP comparator calls on large results.
         ksort($lkp_groups, SORT_STRING);
         $sort_done = microtime(TRUE);
+        $summary = array('matched' => 0, 'different' => 0, 'f1Only' => 0, 'efsOnly' => 0,
+            'f1TotalIDR' => $f1_total_idr, 'efsTotalIDR' => 0);
         $exporter = new Excel_exporter();
         $exporter->start($format);
         foreach ($lkp_groups as $key => $lkp) {
@@ -157,6 +161,15 @@ class Reconciliation_service
             $difference_idr = $efs === NULL ? NULL : $this->amount->subtract_accumulators($lkp['lkp_eqIDR'] === NULL ? 0 : $lkp['lkp_eqIDR'], $efs['efs_eqIDR']);
             $lkp['lkp_ori'] = $lkp['lkp_ori'] === NULL ? NULL : $this->amount->format_accumulator($lkp['lkp_ori']);
             $lkp['lkp_eqIDR'] = $lkp['lkp_eqIDR'] === NULL ? NULL : $this->amount->format_accumulator($lkp['lkp_eqIDR']);
+            // Statistics describe the existing output; they do not alter reconciliation.
+            if ($efs !== NULL) {
+                $summary['efsTotalIDR'] = $this->amount->accumulate($summary['efsTotalIDR'],
+                    $this->amount->format_accumulator($efs['efs_eqIDR']));
+            }
+            if ($efs === NULL) $summary['f1Only']++;
+            elseif ($lkp['lkp_ori'] === NULL) $summary['efsOnly']++;
+            elseif ($difference_ori === '0.00' && $difference_idr === '0.00') $summary['matched']++;
+            else $summary['different']++;
             if ($efs !== NULL)
                 sort($efs['rincian'], SORT_STRING);
             $exporter->add_row(array_merge($lkp, array(
@@ -169,6 +182,12 @@ class Reconciliation_service
             $stats['resultRows']++;
         }
 
+        $summary['f1TotalIDR'] = $this->amount->format_accumulator($summary['f1TotalIDR']);
+        $summary['efsTotalIDR'] = $this->amount->format_accumulator($summary['efsTotalIDR']);
+        $summary['combinedTotalIDR'] = $this->amount->sum($summary['f1TotalIDR'], $summary['efsTotalIDR']);
+        $summary['f1MatchedGroups'] = $summary['matched'] + $summary['different'];
+        $summary['f1UnmatchedGroups'] = $summary['f1Only'];
+        $stats['summary'] = $summary;
         $write_done = microtime(TRUE);
         $exporter->save($output_path);
         $finished = microtime(TRUE);

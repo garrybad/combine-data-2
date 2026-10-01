@@ -49,7 +49,7 @@ class Reconciliation extends CI_Controller
             $this->validate_file('tbFile', 'File Bulanan');
             $lkp = $this->store_upload('lkpFile', 'lkp');
             $tb = $this->store_upload('tbFile', 'tb');
-            $output = FCPATH . 'outputs/hasil-kombinasi-' . bin2hex(random_bytes(12)) . '.' . $format;
+            $output = FCPATH . 'outputs/hasil-rekonsiliasi-' . bin2hex(random_bytes(12)) . '.' . $format;
             if (!is_dir(dirname($output))) @mkdir(dirname($output), 0775, TRUE);
             if (!is_writable(dirname($output))) throw new Exception('Folder outputs tidak dapat ditulis.');
             $stats = $this->reconciliation_service->process($lkp['path'], $tb['path'], $output, $format);
@@ -72,7 +72,7 @@ class Reconciliation extends CI_Controller
         // Remove any earlier buffered diagnostics before sending binary/file bytes.
         while (ob_get_level() > 0) ob_end_clean();
         header('Content-Type: ' . ($format === 'xlsx' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'text/csv; charset=UTF-8'));
-        header('Content-Disposition: attachment; filename="hasil-kombinasi.' . $format . '"');
+        header('Content-Disposition: attachment; filename="hasil-rekonsiliasi.' . $format . '"');
         header('Content-Length: ' . filesize($output));
         header('Cache-Control: no-store');
         header('X-Processing-Stats: ' . rawurlencode(json_encode($stats)));

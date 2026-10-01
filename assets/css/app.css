@@ -596,3 +596,24 @@ p {
 .app-notification .swal2-loader {
     border-color: #ff6e00 transparent #ff6e00 transparent
 }
+
+/* Summary amounts and example trend selector. */
+#stats .stat strong {
+    overflow-wrap: anywhere;
+    font-size: 18px
+}
+
+.trend-select {
+    margin: 8px;
+    padding: 10px 12px;
+    border: 1px solid #ddd7d0;
+    border-radius: 10px;
+    background: #fff;
+    font: inherit;
+    max-width: 100%
+}
+
+.trend-select:focus-visible {
+    outline: 2px solid #ff6e00;
+    outline-offset: 2px
+}
