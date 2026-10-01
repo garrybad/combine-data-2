@@ -79,16 +79,53 @@
     });
   }
   function formatNumber(v) { return typeof v === 'number' && isFinite(v) ? new Intl.NumberFormat('id-ID').format(v) : '—'; }
+  function nominalCard(label, amount) {
+    // Preserve decimal precision for amounts above JavaScript's safe integer limit.
+    var formatted = '—';
+    if (typeof amount === 'string' && /^-?\d+\.\d{2}$/.test(amount)) {
+      var parts = amount.split('.');
+      formatted = 'Rp ' + parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.') + ',' + parts[1];
+    }
+    return '<div class="stat"><small>' + label + '</small><strong>' + formatted + '</strong></div>';
+  }
+  function renderExampleTrend() {
+    var original = document.getElementById('trendMetric').value === 'ori';
+    var unit = original ? 'USD' : 'IDR';
+    document.getElementById('trendNote').textContent = 'Data contoh hari ini (' + new Date().toLocaleDateString('id-ID') +
+      '), bukan hasil file. ' + (original ? 'Original menggunakan USD saja; mata uang berbeda tidak dijumlahkan.' : 'Nominal ekuivalen IDR.');
+    if (!window.Chart) {
+      document.getElementById('trendNote').textContent += ' Grafik tidak tersedia karena pustaka grafik belum dimuat.';
+      return;
+    }
+    if (selisihChartInstance) selisihChartInstance.destroy();
+    selisihChartInstance = new Chart(document.getElementById('selisihChart'), {
+      type: 'line',
+      data: {
+        labels: ['08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00'],
+        datasets: [{ label: 'Contoh selisih ' + unit,
+          data: original ? [30, -12, 9, 0, 45, -6, 18] : [500000, -200000, 150000, 0, 750000, -100000, 300000],
+          borderColor: '#ff6e00', backgroundColor: 'rgba(255,110,0,0.1)', borderWidth: 2,
+          fill: true, tension: 0.3, pointRadius: 4 }]
+      },
+      options: { responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false }, tooltip: { callbacks: {
+          label: function (context) { return 'Contoh selisih: ' + unit + ' ' + formatNumber(context.raw); }
+        } } },
+        scales: { y: { title: { display: true, text: 'Selisih ' + unit } },
+          x: { title: { display: true, text: 'Jam (contoh)' } } }
+      }
+    });
+  }
+  document.getElementById('trendMetric').addEventListener('change', renderExampleTrend);
   function renderStats(s, requestSeconds) {
     var f1Items = [
-      ['Baris F1', s.lkpRows], ['Terfilter f8', s.filteredByF8], ['Duplikat mapping', s.duplicateMappingKeys]
+      ['Baris F1', s.lkpRows], ['Terfilter f8', s.filteredByF8],
     ];
     var efsItems = [
-      ['Baris EFS', s.tbRows], ['EFS di luar periode 6', s.filteredByPeriod],
-      ['Tidak match akun', s.unmatchedRincianAkun], ['Mapped', s.mappedRows]
+      ['Baris EFS', s.tbRows],['Baris tanpa mapping akun', s.unmatchedRincianAkun], ['Baris dengan mapping', s.mappedRows]
     ];
     var resultItems = [
-      ['Kelompok tanpa EFS', s.unmatchedEfsGroups], ['Hasil', s.resultRows]
+      ['Total kelompok hasil', s.resultRows]
     ];
 
     function buildHtml(items) {
@@ -101,53 +138,17 @@
 
     statsBox.classList.remove('hidden');
 
-    if (window.Chart) {
-      var ctx = document.getElementById('selisihChart');
-      if (ctx) {
-        if (selisihChartInstance) selisihChartInstance.destroy();
-        selisihChartInstance = new Chart(ctx, {
-          type: 'line',
-          data: {
-            labels: ['1 Jun', '2 Jun', '3 Jun', '4 Jun', '5 Jun', '6 Jun', '7 Jun'],
-            datasets: [{
-              label: 'Selisih Harian',
-              data: [500000, -200000, 150000, 0, 750000, -100000, 300000],
-              borderColor: '#ff6e00',
-              backgroundColor: 'rgba(255, 110, 0, 0.1)',
-              borderWidth: 2,
-              fill: true,
-              tension: 0.3,
-              pointRadius: 4,
-              pointBackgroundColor: '#ff6e00'
-            }]
-          },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-              legend: { display: false },
-              tooltip: {
-                callbacks: {
-                  label: function (context) {
-                    return 'Selisih: Rp ' + new Intl.NumberFormat('id-ID').format(context.raw);
-                  }
-                }
-              }
-            },
-            scales: {
-              y: {
-                ticks: {
-                  callback: function (value) {
-                    if (value >= 1000 || value <= -1000) return (value / 1000) + 'k';
-                    return value;
-                  }
-                }
-              }
-            }
-          }
-        });
-      }
+    var r = s.summary;
+    if (r) {
+      document.getElementById('statGridF1').innerHTML += nominalCard('Total F1 IDR (F7 setelah filter)', r.f1TotalIDR);
+      document.getElementById('statGridEfs').innerHTML += nominalCard('Total EFS dalam IDR', r.efsTotalIDR);
+      document.getElementById('statGridResult').innerHTML += buildHtml([
+        ['F1 match dengan EFS (kelompok)', r.f1MatchedGroups],
+        ['F1 tidak match dengan EFS (kelompok)', r.f1UnmatchedGroups],
+        ['EFS tanpa pasangan F1 (kelompok)', r.efsOnly]
+      ]) + nominalCard('Total gabungan F1 + EFS (IDR)', r.combinedTotalIDR);
     }
+    renderExampleTrend();
 
     // var durations = [['Upload sampai hasil diterima', requestSeconds]];
     // if (s.timingsSeconds) {

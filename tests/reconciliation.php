@@ -56,6 +56,8 @@ try {
         array('w18', '100', 'IDR', '', '8.00', '', '', '80.00', '', '')
     ));
     check($stats['resultRows'], 7);
+    check($stats['summary'], array('matched' => 0, 'different' => 1, 'f1Only' => 4, 'efsOnly' => 2,
+        'f1TotalIDR' => '1195.00', 'efsTotalIDR' => '619.00', 'combinedTotalIDR' => '1814.00', 'f1MatchedGroups' => 1, 'f1UnmatchedGroups' => 4));
     check($stats['unmatchedEfsGroups'], 4);
     check($stats['lkpRows'], 9);
     check($stats['filteredByF8'], 2);
@@ -85,6 +87,9 @@ try {
     $emptyStats = $service->process($lkp, $tb, $out);
     check($emptyStats['unmatchedEfsGroups'], 5);
     check($emptyStats['resultRows'], 5);
+    check($emptyStats['summary']['f1TotalIDR'], '1195.00');
+    check($emptyStats['summary']['f1MatchedGroups'], 0);
+    check($emptyStats['summary']['f1UnmatchedGroups'], 5);
     check(count(file($out)), 6);
     check($ci->amount_math->sum('999999999999999999.99', '0.01'), '1000000000000000000.00');
     // Preserve quoted delimiters, escaped quotes, empty fields, and whitespace.

@@ -95,7 +95,7 @@
               <div class="download-filename"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"
                   stroke="currentColor" stroke-width="1.8" aria-hidden="true">
                   <path d="M12 3v12m-5-5 5 5 5-5M5 16v4h14v-4" />
-                </svg><span id="outputFilename">hasil-kombinasi.xlsx</span></div>
+                </svg><span id="outputFilename">hasil-rekonsiliasi.xlsx</span></div>
             </div>
             <div class="download-action">
               <button id="submitBtn" class="primary" type="submit" disabled>⇄ &nbsp;Proses & unduh</button>
@@ -108,7 +108,6 @@
         <div class="stats-head">
           <div>
             <h2>Ringkasan proses</h2>
-            <p>Statistik hasil processing dari backend.</p>
           </div><span class="success-pill">Selesai</span>
         </div>
         <h3 class="stat-section-title">Dari File F1</h3>
@@ -117,7 +116,13 @@
         <div class="stat-grid" id="statGridEfs"></div>
         <h3 class="stat-section-title">Gabungan / Hasil</h3>
         <div class="stat-grid" id="statGridResult"></div>
-        <h3 class="stat-section-title">Tren Selisih per Hari (Contoh)</h3>
+        <h3 class="stat-section-title">Tren Hari Ini (Contoh)</h3>
+        <label for="trendMetric">Tampilkan:</label>
+        <select id="trendMetric" class="trend-select">
+          <option value="idr">Selisih IDR</option>
+          <option value="ori">Selisih Original</option>
+        </select>
+        <p id="trendNote"></p>
         <div class="chart-container" style="position: relative; height:250px; width:100%; margin-top: 15px; background: #fff; border: 1px solid #e8e4df; border-radius: 12px; padding: 15px;">
           <canvas id="selisihChart"></canvas>
         </div>
