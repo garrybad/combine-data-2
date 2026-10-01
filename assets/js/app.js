@@ -78,29 +78,7 @@
       didOpen: function () { Swal.showLoading(); }
     });
   }
-  function formatNumber(v) { return typeof v === 'number' && isFinite(v) ? new Intl.NumberFormat('id-ID').format(v) : '—'; }
-  function renderStats(s, requestSeconds) {
-    var f1Items = [
-      ['Baris F1', s.lkpRows], ['Terfilter f8', s.filteredByF8], ['Duplikat mapping', s.duplicateMappingKeys]
-    ];
-    var efsItems = [
-      ['Baris EFS', s.tbRows], ['EFS di luar periode 6', s.filteredByPeriod],
-      ['Tidak match akun', s.unmatchedRincianAkun], ['Mapped', s.mappedRows]
-    ];
-    var resultItems = [
-      ['Kelompok tanpa EFS', s.unmatchedEfsGroups], ['Hasil', s.resultRows]
-    ];
-
-    function buildHtml(items) {
-      return items.map(function (item) { return '<div class="stat"><small>' + item[0] + '</small><strong>' + formatNumber(item[1]) + '</strong></div>'; }).join('');
-    }
-
-    document.getElementById('statGridF1').innerHTML = buildHtml(f1Items);
-    document.getElementById('statGridEfs').innerHTML = buildHtml(efsItems);
-    document.getElementById('statGridResult').innerHTML = buildHtml(resultItems);
-
-    statsBox.classList.remove('hidden');
-
+  function initChart() {
     if (window.Chart) {
       var ctx = document.getElementById('selisihChart');
       if (ctx) {
@@ -148,6 +126,28 @@
         });
       }
     }
+  }
+
+  function formatNumber(v) { return typeof v === 'number' && isFinite(v) ? new Intl.NumberFormat('id-ID').format(v) : '—'; }
+  function renderStats(s, requestSeconds) {
+    var f1Items = [
+      ['Baris F1', s.lkpRows], ['Terfilter f8', s.filteredByF8], ['Duplikat mapping', s.duplicateMappingKeys]
+    ];
+    var efsItems = [
+      ['Baris EFS', s.tbRows], ['EFS di luar periode 6', s.filteredByPeriod],
+      ['Tidak match akun', s.unmatchedRincianAkun], ['Mapped', s.mappedRows]
+    ];
+    var resultItems = [
+      ['Kelompok tanpa EFS', s.unmatchedEfsGroups], ['Hasil', s.resultRows]
+    ];
+
+    function buildHtml(items) {
+      return items.map(function (item) { return '<div class="stat"><small>' + item[0] + '</small><strong>' + formatNumber(item[1]) + '</strong></div>'; }).join('');
+    }
+
+    document.getElementById('statGridF1').innerHTML = buildHtml(f1Items);
+    document.getElementById('statGridEfs').innerHTML = buildHtml(efsItems);
+    document.getElementById('statGridResult').innerHTML = buildHtml(resultItems);
 
     // var durations = [['Upload sampai hasil diterima', requestSeconds]];
     // if (s.timingsSeconds) {
@@ -170,7 +170,9 @@
     //   cell.appendChild(value);
     //   document.getElementById('statGridResult').appendChild(cell);
     // });
+
     statsBox.classList.remove('hidden');
+
   }
 
   form.addEventListener('submit', async function (e) {
@@ -233,5 +235,10 @@
       showNotification('error', message);
     }
     finally { processing = false; outputFormat.disabled = false; submit.disabled = !inputs.lkpFile.files.length || !inputs.tbFile.files.length; submit.textContent = submit.dataset.original || '⇄  Proses & unduh'; }
+  });
+
+  // Render chart when DOM is loaded
+  document.addEventListener("DOMContentLoaded", function () {
+    initChart();
   });
 })();

@@ -104,6 +104,21 @@
         </form>
       </section>
 
+      <section id="charts" class="chart-fx">
+        <div class="stats-head">
+          <div>
+            <h2>Chart</h2>
+            <p>Statistik hasil processing dari backend.</p>
+          </div>
+        </div>
+
+        <h3 class="stat-section-title">Tren Selisih per Hari (Contoh)</h3>
+        <div class="chart-container"
+          style="position: relative; height:250px; width:100%; margin-top: 15px; background: #fff; border: 1px solid #e8e4df; border-radius: 12px; padding: 15px;">
+          <canvas id="selisihChart"></canvas>
+        </div>
+      </section>
+
       <section id="stats" class="stats hidden">
         <div class="stats-head">
           <div>
@@ -117,10 +132,6 @@
         <div class="stat-grid" id="statGridEfs"></div>
         <h3 class="stat-section-title">Gabungan / Hasil</h3>
         <div class="stat-grid" id="statGridResult"></div>
-        <h3 class="stat-section-title">Tren Selisih per Hari (Contoh)</h3>
-        <div class="chart-container" style="position: relative; height:250px; width:100%; margin-top: 15px; background: #fff; border: 1px solid #e8e4df; border-radius: 12px; padding: 15px;">
-          <canvas id="selisihChart"></canvas>
-        </div>
       </section>
     </div>
   </main>
