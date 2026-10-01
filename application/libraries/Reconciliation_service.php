@@ -24,43 +24,70 @@ class Reconciliation_service
         $mapping_by_rincian = array();
         foreach ($mapping_rows as $row) {
             $key = $this->key($row['rincianAkun']);
-            if ($key === '') continue;
-            if (!isset($mapping_by_rincian[$key])) $mapping_by_rincian[$key] = array();
+            if ($key === '')
+                continue;
+            if (!isset($mapping_by_rincian[$key]))
+                $mapping_by_rincian[$key] = array();
             $mapping_by_rincian[$key][] = $row['coaF1'] === NULL ? NULL : $this->key($row['coaF1']);
         }
 
         $duplicate_mapping = 0;
-        foreach ($mapping_by_rincian as $rows) if (count($rows) > 1) $duplicate_mapping++;
+        foreach ($mapping_by_rincian as $rows)
+            if (count($rows) > 1)
+                $duplicate_mapping++;
         $mapping_done = microtime(TRUE);
 
-        $stats = array('tbRows' => 0, 'mappedRows' => 0, 'unmatchedRincianAkun' => 0,
-            'filteredByPeriod' => 0, 'filteredByF5' => 0, 'unmatchedEfsGroups' => 0,
-            'resultRows' => 0, 'duplicateMappingKeys' => $duplicate_mapping);
+        $stats = array(
+            'tbRows' => 0,
+            'mappedRows' => 0,
+            'unmatchedRincianAkun' => 0,
+            'filteredByPeriod' => 0,
+            'filteredByF8' => 0,
+            'unmatchedEfsGroups' => 0,
+            'resultRows' => 0,
+            'duplicateMappingKeys' => $duplicate_mapping,
+            'lkpRows' => 0
+        );
         $lkp_groups = array();
         $lkp_handle = fopen($lkp_path, 'rb');
-        if (!$lkp_handle) throw new Exception('File LKP tidak dapat dibuka.');
+        if (!$lkp_handle)
+            throw new Exception('File LKP tidak dapat dibuka.');
         try {
             $this->parser->parse_lkp_handle($lkp_handle, function ($row) use (&$lkp_groups, &$stats) {
+                $stats['lkpRows']++;
                 // Parser already trims every source field.
                 $branch = $row['f5'];
-                if ($branch === '0000') { $stats['filteredByF5']++; return; }
-                if ($row['f8'] !== '0000') return;
+                if ($row['f8'] !== '0000') {
+                    $stats['filteredByF8']++;
+                    return;
+                }
+                if ($branch === '0000') {
+                    return;
+                }
                 $coa = $row['f2'];
                 $currency = strtoupper($row['f4']);
                 $key = $this->group_key($branch, $coa, $currency);
                 if (!isset($lkp_groups[$key])) {
-                    $lkp_groups[$key] = array('branch' => $branch, 'coaF1' => $coa,
-                        'currency' => $currency, 'lkp_ori' => 0, 'lkp_eqIDR' => 0);
+                    $lkp_groups[$key] = array(
+                        'branch' => $branch,
+                        'coaF1' => $coa,
+                        'currency' => $currency,
+                        'lkp_ori' => 0,
+                        'lkp_eqIDR' => 0
+                    );
                 }
                 $lkp_groups[$key]['lkp_ori'] = $this->amount->accumulate($lkp_groups[$key]['lkp_ori'], $row['f6']);
                 $lkp_groups[$key]['lkp_eqIDR'] = $this->amount->accumulate($lkp_groups[$key]['lkp_eqIDR'], $row['f7']);
             });
-        } finally { fclose($lkp_handle); }
+        } finally {
+            fclose($lkp_handle);
+        }
         $lkp_done = microtime(TRUE);
 
         $efs_groups = array();
         $tb_handle = fopen($tb_path, 'rb');
-        if (!$tb_handle) throw new Exception('File TB Juni tidak dapat dibuka.');
+        if (!$tb_handle)
+            throw new Exception('File TB Juni tidak dapat dibuka.');
         try {
             $this->parser->parse_tb_handle($tb_handle, function ($row) use (&$stats, &$mapping_by_rincian, &$efs_groups) {
                 $stats['tbRows']++;
@@ -72,30 +99,47 @@ class Reconciliation_service
                 $branch = $this->key($segments[0]);
                 $rincian = $this->key($segments[min(2, count($segments) - 1)]);
                 $mappings = isset($mapping_by_rincian[$rincian]) ? $mapping_by_rincian[$rincian] : array();
-                if (!$mappings) { $stats['unmatchedRincianAkun']++; return; }
+                if (!$mappings) {
+                    $stats['unmatchedRincianAkun']++;
+                    return;
+                }
                 $stats['mappedRows']++;
                 $currency = strtoupper($row['CURRENCY_CODE']);
                 foreach ($mappings as $coa) {
-                    if ($coa === NULL) continue;
+                    if ($coa === NULL)
+                        continue;
                     $key = $this->group_key($branch, $coa, $currency);
                     if (!isset($efs_groups[$key])) {
-                        $efs_groups[$key] = array('branch' => $branch, 'coaF1' => $coa,
+                        $efs_groups[$key] = array(
+                            'branch' => $branch,
+                            'coaF1' => $coa,
                             'currency' => $currency,
-                            'rincian' => array(), 'efs_ori' => 0, 'efs_eqIDR' => 0);
+                            'rincian' => array(),
+                            'efs_ori' => 0,
+                            'efs_eqIDR' => 0
+                        );
                     }
                     $efs_groups[$key]['rincian'][$rincian] = $rincian;
                     $efs_groups[$key]['efs_ori'] = $this->amount->accumulate($efs_groups[$key]['efs_ori'], $row['AMOUNT']);
                     $efs_groups[$key]['efs_eqIDR'] = $this->amount->accumulate($efs_groups[$key]['efs_eqIDR'], $row['BASE_AMOUNT']);
                 }
             }, TRUE);
-        } finally { fclose($tb_handle); }
+        } finally {
+            fclose($tb_handle);
+        }
         $tb_done = microtime(TRUE);
 
         // UNION ALL: append EFS-only groups before sorting the combined result.
         foreach ($efs_groups as $key => $efs) {
-            if ($efs['branch'] === '0000' || isset($lkp_groups[$key])) continue;
-            $lkp_groups[$key] = array('branch' => $efs['branch'], 'coaF1' => $efs['coaF1'],
-                'currency' => $efs['currency'], 'lkp_ori' => NULL, 'lkp_eqIDR' => NULL);
+            if ($efs['branch'] === '0000' || isset($lkp_groups[$key]))
+                continue;
+            $lkp_groups[$key] = array(
+                'branch' => $efs['branch'],
+                'coaF1' => $efs['coaF1'],
+                'currency' => $efs['currency'],
+                'lkp_ori' => NULL,
+                'lkp_eqIDR' => NULL
+            );
         }
 
         // Keys preserve the original branch/COA/currency string order.
@@ -113,7 +157,8 @@ class Reconciliation_service
             $difference_idr = $efs === NULL ? NULL : $this->amount->subtract_accumulators($lkp['lkp_eqIDR'] === NULL ? 0 : $lkp['lkp_eqIDR'], $efs['efs_eqIDR']);
             $lkp['lkp_ori'] = $lkp['lkp_ori'] === NULL ? NULL : $this->amount->format_accumulator($lkp['lkp_ori']);
             $lkp['lkp_eqIDR'] = $lkp['lkp_eqIDR'] === NULL ? NULL : $this->amount->format_accumulator($lkp['lkp_eqIDR']);
-            if ($efs !== NULL) sort($efs['rincian'], SORT_STRING);
+            if ($efs !== NULL)
+                sort($efs['rincian'], SORT_STRING);
             $exporter->add_row(array_merge($lkp, array(
                 'efs_rincianAkun' => $efs === NULL ? NULL : implode(',', $efs['rincian']),
                 'efs_ori' => $efs === NULL ? NULL : $this->amount->format_accumulator($efs['efs_ori']),
@@ -159,5 +204,8 @@ class Reconciliation_service
         return bin2hex($branch) . '/' . bin2hex($coa) . '/' . bin2hex($currency);
     }
 
-    private function key($value) { return trim((string) $value); }
+    private function key($value)
+    {
+        return trim((string) $value);
+    }
 }

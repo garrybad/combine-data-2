@@ -5,6 +5,7 @@
     confirmButtonColor: '#ff6e00',
     customClass: { popup: 'app-notification' }
   }) : null;
+  var selisihChartInstance = null;
   var processing = false;
   var form = document.getElementById('processForm');
   var outputFormat = document.getElementById('outputFormat');
@@ -18,7 +19,6 @@
   });
   var submit = document.getElementById('submitBtn');
   var statsBox = document.getElementById('stats');
-  var statGrid = document.getElementById('statGrid');
   var readyBadge = document.getElementById('readyBadge');
   var inputs = { lkpFile: document.getElementById('lkpInput'), tbFile: document.getElementById('tbInput') };
 
@@ -80,33 +80,96 @@
   }
   function formatNumber(v) { return typeof v === 'number' && isFinite(v) ? new Intl.NumberFormat('id-ID').format(v) : '—'; }
   function renderStats(s, requestSeconds) {
-    var items = [
-      ['Baris TB', s.tbRows], ['Mapped', s.mappedRows], ['Tidak match akun', s.unmatchedRincianAkun],
-      ['Kelompok tanpa EFS', s.unmatchedEfsGroups], ['Terfilter f5', s.filteredByF5], ['Hasil', s.resultRows],
-      ['Duplikat mapping', s.duplicateMappingKeys], ['TB di luar periode 6', s.filteredByPeriod]
+    var f1Items = [
+      ['Baris F1', s.lkpRows], ['Terfilter f8', s.filteredByF8], ['Duplikat mapping', s.duplicateMappingKeys]
     ];
-    statGrid.innerHTML = items.map(function (item) { return '<div class="stat"><small>' + item[0] + '</small><strong>' + formatNumber(item[1]) + '</strong></div>'; }).join('');
-    var durations = [['Upload sampai hasil diterima', requestSeconds]];
-    if (s.timingsSeconds) {
-      var t = s.timingsSeconds;
-      durations.push(['Pengolahan di server', t.total], ['Mapping akun', t.mapping],
-        ['Data LKP', t.lkp], ['Data bulanan', t.tb], ['Pengurutan & ekspor', t.sortAndExport]);
-      // The remainder includes transfer, queuing, and work outside the service.
-      // It must not be presented as upload time alone.
-      durations.push(['Transfer & waktu lainnya', Math.max(0, requestSeconds - t.total)]);
+    var efsItems = [
+      ['Baris EFS', s.tbRows], ['EFS di luar periode 6', s.filteredByPeriod],
+      ['Tidak match akun', s.unmatchedRincianAkun], ['Mapped', s.mappedRows]
+    ];
+    var resultItems = [
+      ['Kelompok tanpa EFS', s.unmatchedEfsGroups], ['Hasil', s.resultRows]
+    ];
+
+    function buildHtml(items) {
+      return items.map(function (item) { return '<div class="stat"><small>' + item[0] + '</small><strong>' + formatNumber(item[1]) + '</strong></div>'; }).join('');
     }
-    durations.forEach(function (item) {
-      if (typeof item[1] !== 'number' || !isFinite(item[1])) return;
-      var cell = document.createElement('div');
-      cell.className = 'stat';
-      var label = document.createElement('small');
-      label.textContent = item[0];
-      var value = document.createElement('strong');
-      value.textContent = formatNumber(Math.round(item[1] * 10) / 10) + ' detik';
-      cell.appendChild(label);
-      cell.appendChild(value);
-      statGrid.appendChild(cell);
-    });
+
+    document.getElementById('statGridF1').innerHTML = buildHtml(f1Items);
+    document.getElementById('statGridEfs').innerHTML = buildHtml(efsItems);
+    document.getElementById('statGridResult').innerHTML = buildHtml(resultItems);
+
+    statsBox.classList.remove('hidden');
+
+    if (window.Chart) {
+      var ctx = document.getElementById('selisihChart');
+      if (ctx) {
+        if (selisihChartInstance) selisihChartInstance.destroy();
+        selisihChartInstance = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: ['1 Jun', '2 Jun', '3 Jun', '4 Jun', '5 Jun', '6 Jun', '7 Jun'],
+            datasets: [{
+              label: 'Selisih Harian',
+              data: [500000, -200000, 150000, 0, 750000, -100000, 300000],
+              borderColor: '#ff6e00',
+              backgroundColor: 'rgba(255, 110, 0, 0.1)',
+              borderWidth: 2,
+              fill: true,
+              tension: 0.3,
+              pointRadius: 4,
+              pointBackgroundColor: '#ff6e00'
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                callbacks: {
+                  label: function (context) {
+                    return 'Selisih: Rp ' + new Intl.NumberFormat('id-ID').format(context.raw);
+                  }
+                }
+              }
+            },
+            scales: {
+              y: {
+                ticks: {
+                  callback: function (value) {
+                    if (value >= 1000 || value <= -1000) return (value / 1000) + 'k';
+                    return value;
+                  }
+                }
+              }
+            }
+          }
+        });
+      }
+    }
+
+    // var durations = [['Upload sampai hasil diterima', requestSeconds]];
+    // if (s.timingsSeconds) {
+    //   var t = s.timingsSeconds;
+    //   durations.push(['Pengolahan di server', t.total], ['Mapping akun', t.mapping],
+    //     ['Data LKP', t.lkp], ['Data bulanan', t.tb], ['Pengurutan & ekspor', t.sortAndExport]);
+    //   // The remainder includes transfer, queuing, and work outside the service.
+    //   // It must not be presented as upload time alone.
+    //   durations.push(['Transfer & waktu lainnya', Math.max(0, requestSeconds - t.total)]);
+    // }
+    // durations.forEach(function (item) {
+    //   if (typeof item[1] !== 'number' || !isFinite(item[1])) return;
+    //   var cell = document.createElement('div');
+    //   cell.className = 'stat';
+    //   var label = document.createElement('small');
+    //   label.textContent = item[0];
+    //   var value = document.createElement('strong');
+    //   value.textContent = formatNumber(Math.round(item[1] * 10) / 10) + ' detik';
+    //   cell.appendChild(label);
+    //   cell.appendChild(value);
+    //   document.getElementById('statGridResult').appendChild(cell);
+    // });
     statsBox.classList.remove('hidden');
   }
 
@@ -146,7 +209,7 @@
       var requestSeconds = (performance.now() - requestStarted) / 1000;
       var signature = await blob.slice(0, 256).text();
       if ((selectedFormat === 'xlsx' && signature.slice(0, 2) !== 'PK') ||
-          (selectedFormat === 'csv' && signature.replace(/^\uFEFF/, '').indexOf('branch;coaF1;currency;') !== 0)) {
+        (selectedFormat === 'csv' && signature.replace(/^\uFEFF/, '').indexOf('branch;coaF1;currency;') !== 0)) {
         throw new Error('Isi file hasil tidak valid atau mengandung error PHP. Unduhan dibatalkan.');
       }
       var filename = 'hasil-kombinasi.' + selectedFormat;
