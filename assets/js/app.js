@@ -78,6 +78,55 @@
       didOpen: function () { Swal.showLoading(); }
     });
   }
+  function initChart() {
+    if (window.Chart) {
+      var ctx = document.getElementById('selisihChart');
+      if (ctx) {
+        if (selisihChartInstance) selisihChartInstance.destroy();
+        selisihChartInstance = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: ['1 Jun', '2 Jun', '3 Jun', '4 Jun', '5 Jun', '6 Jun', '7 Jun'],
+            datasets: [{
+              label: 'Selisih Harian',
+              data: [500000, -200000, 150000, 0, 750000, -100000, 300000],
+              borderColor: '#ff6e00',
+              backgroundColor: 'rgba(255, 110, 0, 0.1)',
+              borderWidth: 2,
+              fill: true,
+              tension: 0.3,
+              pointRadius: 4,
+              pointBackgroundColor: '#ff6e00'
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                callbacks: {
+                  label: function (context) {
+                    return 'Selisih: Rp ' + new Intl.NumberFormat('id-ID').format(context.raw);
+                  }
+                }
+              }
+            },
+            scales: {
+              y: {
+                ticks: {
+                  callback: function (value) {
+                    if (value >= 1000 || value <= -1000) return (value / 1000) + 'k';
+                    return value;
+                  }
+                }
+              }
+            }
+          }
+        });
+      }
+    }
+  }
   function formatNumber(v) { return typeof v === 'number' && isFinite(v) ? new Intl.NumberFormat('id-ID').format(v) : '—'; }
   function nominalCard(label, amount) {
     // Preserve decimal precision for amounts above JavaScript's safe integer limit.

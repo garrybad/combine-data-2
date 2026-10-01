@@ -473,6 +473,23 @@ p {
     transition: border-color .18s, box-shadow .18s, background .18s
 }
 
+.format-select select {
+    display: block;
+    appearance: none;
+    -webkit-appearance: none;
+    width: 100%;
+    box-sizing: border-box;
+    min-height: 48px;
+    padding: 12px 42px 12px 44px;
+    border: 1px solid #e3ded8;
+    border-radius: 12px;
+    background: #fff;
+    color: #333;
+    font: 600 13px Arial, Helvetica, sans-serif;
+    cursor: pointer;
+    transition: border-color .18s, box-shadow .18s, background .18s
+}
+
 .format-select select:hover {
     border-color: #f5b486;
     background: #fffaf6
@@ -604,7 +621,7 @@ p {
 }
 
 .trend-select {
-    margin: 8px;
+    /* margin: 8px; */
     padding: 10px 12px;
     border: 1px solid #ddd7d0;
     border-radius: 10px;

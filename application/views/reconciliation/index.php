@@ -113,6 +113,18 @@
         </div>
 
         <h3 class="stat-section-title">Tren Selisih per Hari (Contoh)</h3>
+        <div class="download-options">
+          <div class="format-select">
+            <select id="trendMetric" name="trendMetric" aria-describedby="trendMetricHint">
+              <option value="idr">Selisih IDR</option>
+              <option value="ori">Selisih Original</option>
+            </select>
+            <svg class="format-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="2" aria-hidden="true">
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          </div>
+        </div>
         <div class="chart-container"
           style="position: relative; height:250px; width:100%; margin-top: 15px; background: #fff; border: 1px solid #e8e4df; border-radius: 12px; padding: 15px;">
           <canvas id="selisihChart"></canvas>
