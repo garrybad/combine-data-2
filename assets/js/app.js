@@ -78,66 +78,6 @@
       didOpen: function () { Swal.showLoading(); }
     });
   }
-  function initChart() {
-    if (window.Chart) {
-      var ctx = document.getElementById('selisihChart');
-      if (ctx) {
-        var dummyData = [
-          { "date": "2026-09-29", "total_selisih_ori": 2237836500, "total_selisih_eqIDR": 1766856500 },
-          { "date": "2026-09-30", "total_selisih_ori": -60000,      "total_selisih_eqIDR": -264000000 },
-          { "date": "2026-10-01", "total_selisih_ori": 200000,      "total_selisih_eqIDR": 725000000  }
-        ];
-        var metricEl = document.getElementById('trendMetric');
-        var original = metricEl ? metricEl.value === 'ori' : false;
-        var unit = original ? 'Original' : 'IDR';
-        var labels  = dummyData.map(function(d) { return d.date; });
-        var values  = dummyData.map(function(d) { return original ? d.total_selisih_ori : d.total_selisih_eqIDR; });
-        if (selisihChartInstance) selisihChartInstance.destroy();
-        selisihChartInstance = new Chart(ctx, {
-          type: 'line',
-          data: {
-            labels: labels,
-            datasets: [{
-              label: 'Selisih ' + unit,
-              data: values,
-              borderColor: '#ff6e00',
-              backgroundColor: 'rgba(255, 110, 0, 0.1)',
-              borderWidth: 2,
-              fill: true,
-              tension: 0.3,
-              pointRadius: 4,
-              pointBackgroundColor: '#ff6e00'
-            }]
-          },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-              legend: { display: false },
-              tooltip: {
-                callbacks: {
-                  label: function (context) {
-                    return 'Selisih: ' + formatNumber(context.raw);
-                  }
-                }
-              }
-            },
-            scales: {
-              y: {
-                ticks: {
-                  callback: function (value) {
-                    if (value >= 1000000 || value <= -1000000) return (value / 1000000).toFixed(1) + 'M';
-                    if (value >= 1000    || value <= -1000)    return (value / 1000).toFixed(0) + 'k';
-                    return value;
-                  }
-                }
-              }
-            }
-          }
-        });
-      }
-    }
-  }
   function formatNumber(v) { return typeof v === 'number' && isFinite(v) ? new Intl.NumberFormat('id-ID').format(v) : '—'; }
   function nominalCard(label, amount) {
     // Preserve decimal precision for amounts above JavaScript's safe integer limit.
@@ -148,54 +88,142 @@
     }
     return '<div class="stat"><small>' + label + '</small><strong>' + formatted + '</strong></div>';
   }
-  function renderExampleTrend() {
-    var original = document.getElementById('trendMetric').value === 'ori';
-    var unit = original ? 'Original' : 'IDR';
-    
-    var dummyData = [
-      { "date": "2026-09-29", "total_selisih_ori": 2237836500, "total_selisih_eqIDR": 1766856500 },
-      { "date": "2026-09-30", "total_selisih_ori": -60000, "total_selisih_eqIDR": -264000000 },
-      { "date": "2026-10-01", "total_selisih_ori": 200000, "total_selisih_eqIDR": 725000000 }
-    ];
+  var historyChoice = document.getElementById('historyChoice');
+  var historyDecision = document.getElementById('historyDecision');
+  var historyApply = document.getElementById('historyApply');
+  var historyStatus = document.getElementById('historyStatus');
+  var pendingToken = null;
+  var savingHistory = false;
 
-    var labels = dummyData.map(function(d) { return d.date; });
-    var dataOri = dummyData.map(function(d) { return d.total_selisih_ori; });
-    var dataIdr = dummyData.map(function(d) { return d.total_selisih_eqIDR; });
+  async function readJsonResponse(response) {
+    var text = await response.text();
+    var body;
+    try { body = JSON.parse(text); }
+    catch (err) {
+      throw new Error('Server mengirim respons yang bukan JSON (HTTP ' + response.status + '). Periksa log PHP dan izin folder sesi server.');
+    }
+    if (!body || typeof body !== 'object' || Array.isArray(body))
+      throw new Error('Format respons server tidak valid.');
+    return body;
+  }
 
-    document.getElementById('trendNote').textContent = 'Data contoh selisih harian, bukan hasil pemrosesan file saat ini.';
-    if (!window.Chart) {
-      document.getElementById('trendNote').textContent += ' Grafik tidak tersedia karena pustaka grafik belum dimuat.';
+  async function refreshHistoryChart() {
+    var note = document.getElementById('trendNote');
+    try {
+      var response = await fetch(historyChoice.dataset.historyUrl, { cache: 'no-store', credentials: 'same-origin' });
+      var body = await readJsonResponse(response);
+      if (!response.ok) throw new Error(body.message || 'Gagal memuat riwayat.');
+      var rows = body.rows || [];
+      if (selisihChartInstance) { selisihChartInstance.destroy(); selisihChartInstance = null; }
+      note.textContent = rows.length ? 'Total selisih IDR dari data yang disimpan, berdasarkan tanggal pada kolom f1. Akun Rasionalisasi tidak dihitung.' : 'Belum ada data tersimpan. Simpan hasil proses ke database untuk menampilkan chart.';
+      if (!rows.length) return;
+      if (!window.Chart) { note.textContent += ' Pustaka grafik belum dimuat.'; return; }
+      selisihChartInstance = new Chart(document.getElementById('selisihChart'), {
+        type: 'line',
+        data: {
+          labels: rows.map(function (row) { return row.date; }),
+          datasets: [{ label: 'Selisih IDR', data: rows.map(function (row) { return Number(row.total_selisih_eqIDR); }),
+            borderColor: '#ff6e00', backgroundColor: 'rgba(255,110,0,0.1)', borderWidth: 2,
+            fill: true, tension: 0.3, pointRadius: 4 }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false }, tooltip: { callbacks: {
+            label: function (context) { return 'Selisih IDR: Rp ' + formatNumber(context.raw); }
+          } } },
+          scales: { y: { title: { display: true, text: 'Selisih IDR' } }, x: { title: { display: true, text: 'Tanggal F1' } } }
+        }
+      });
+    } catch (err) { note.textContent = err.message || 'Gagal memuat chart dari database.'; }
+  }
+
+  async function showHistoryChoice(summary) {
+    pendingToken = summary.pendingToken || null;
+    historyDecision.value = '';
+    historyDecision.disabled = !pendingToken;
+    historyApply.disabled = true;
+    historyStatus.textContent = pendingToken
+      ? 'Tanggal data: ' + summary.dataDate + '. Simpan seluruh baris hasil ke tabel riwayat. Data tanggal yang sama akan diganti. Pilihan tersedia selama 2 jam.'
+      : (summary.saveUnavailableReason || 'Data tidak tersedia untuk disimpan.');
+    historyChoice.classList.remove('hidden');
+    if (!notification) return;
+    if (!pendingToken) {
+      await notification.fire({ icon: 'info', title: 'File telah diunduh', text: historyStatus.textContent });
       return;
     }
-    if (selisihChartInstance) selisihChartInstance.destroy();
-    selisihChartInstance = new Chart(document.getElementById('selisihChart'), {
-      type: 'line',
-      data: {
-        labels: labels,
-        datasets: [{
-          label: 'Selisih ' + unit,
-          data: original ? dataOri : dataIdr,
-          borderColor: '#ff6e00', backgroundColor: 'rgba(255,110,0,0.1)', borderWidth: 2,
-          fill: true, tension: 0.3, pointRadius: 4
-        }]
-      },
-      options: {
-        responsive: true, maintainAspectRatio: false,
-        plugins: {
-          legend: { display: false }, tooltip: {
-            callbacks: {
-              label: function (context) { return 'Selisih: ' + formatNumber(context.raw); }
-            }
-          }
-        },
-        scales: {
-          y: { title: { display: true, text: 'Selisih ' + unit } },
-          x: { title: { display: true, text: 'Tanggal' } }
-        }
+    async function choose(decision) {
+      try {
+        await applyHistoryDecision(decision);
+        return true;
+      } catch (err) {
+        Swal.showValidationMessage(err.message || 'Penyimpanan gagal. Silakan coba lagi.');
+        return false;
       }
+    }
+    var result = await notification.fire({
+      icon: 'success',
+      title: 'File telah diunduh',
+      text: 'Simpan hasil tanggal ' + summary.dataDate + ' ke database dan tampilkan di chart? Data tanggal yang sama akan diganti.',
+      showDenyButton: true,
+      confirmButtonText: 'Simpan ke database',
+      denyButtonText: 'Tidak simpan',
+      denyButtonColor: '#6b7280',
+      allowOutsideClick: false,
+      allowEscapeKey: false,
+      showLoaderOnConfirm: true,
+      showLoaderOnDeny: true,
+      preConfirm: function () { return choose('save'); },
+      preDeny: function () { return choose('discard'); }
     });
+    if (result.isConfirmed || result.isDenied) {
+      await notification.fire({
+        icon: 'success',
+        title: result.isConfirmed ? 'Data berhasil disimpan' : 'Selesai',
+        text: historyStatus.textContent
+      });
+    }
   }
-  document.getElementById('trendMetric').addEventListener('change', renderExampleTrend);
+
+  historyDecision.addEventListener('change', function () {
+    historyApply.disabled = savingHistory || !pendingToken || !historyDecision.value;
+  });
+  async function applyHistoryDecision(decision) {
+    if (savingHistory || !pendingToken) throw new Error('Data belum tersedia atau sedang disimpan.');
+    savingHistory = true;
+    historyApply.disabled = historyDecision.disabled = true;
+    historyStatus.textContent = decision === 'save' ? 'Menyimpan hasil ke database…' : 'Menghapus data sementara…';
+    try {
+      var tokenResponse = await fetch(form.dataset.csrfUrl, { cache: 'no-store', credentials: 'same-origin' });
+      if (!tokenResponse.ok) throw new Error('Gagal memperbarui token keamanan.');
+      var token = await readJsonResponse(tokenResponse);
+      var data = new FormData();
+      data.set(token.name, token.hash);
+      data.set('pendingToken', pendingToken);
+      data.set('decision', decision);
+      var response = await fetch(historyChoice.dataset.saveUrl, { method: 'POST', body: data,
+        credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+      var body = await readJsonResponse(response);
+      if (!response.ok || !body.ok) throw new Error(body.message || 'Pilihan penyimpanan gagal diterapkan.');
+      pendingToken = null;
+      historyStatus.textContent = decision === 'save'
+        ? formatNumber(body.savedRows) + ' baris disimpan ke database. Chart diperbarui.'
+        : 'Data tidak disimpan ke database dan tidak ditambahkan ke chart.';
+      if (decision === 'save') await refreshHistoryChart();
+    } catch (err) {
+      historyStatus.textContent = err.message || 'Penyimpanan gagal. Silakan coba lagi.';
+      throw err;
+    } finally {
+      savingHistory = false;
+      historyDecision.disabled = !pendingToken;
+      historyApply.disabled = !pendingToken || !historyDecision.value;
+    }
+  }
+  historyApply.addEventListener('click', async function () {
+    if (savingHistory || !pendingToken || !historyDecision.value) return;
+    try { await applyHistoryDecision(historyDecision.value); }
+    catch (err) { showNotification('error', err.message || 'Penyimpanan gagal. Silakan coba lagi.'); }
+  });
+
   function renderStats(s, requestSeconds) {
     var f1Items = [
       ['Baris F1', s.lkpRows], ['Terfilter f8', s.filteredByF8],
@@ -204,7 +232,9 @@
       ['Baris EFS', s.tbRows], ['Baris tanpa mapping akun', s.unmatchedRincianAkun], ['Baris dengan mapping', s.mappedRows]
     ];
     var resultItems = [
-      ['Total kelompok hasil', s.resultRows]
+      ['Total kelompok hasil', s.resultRows],
+      ['Baris Rasionalisasi', s.rasionalisasiRows],
+      ['Baris bukan Rasionalisasi', s.nonRasionalisasiRows]
     ];
 
     function buildHtml(items) {
@@ -227,7 +257,7 @@
         ['EFS tanpa pasangan F1 (kelompok)', r.efsOnly]
       ]) + nominalCard('Total gabungan F1 + EFS (IDR)', r.combinedTotalIDR);
     }
-    renderExampleTrend();
+
 
     // var durations = [['Upload sampai hasil diterima', requestSeconds]];
     // if (s.timingsSeconds) {
@@ -258,6 +288,7 @@
   form.addEventListener('submit', async function (e) {
     e.preventDefault();
     if (processing) return;
+    if (pendingToken || savingHistory) { showNotification('error', 'Terapkan pilihan penyimpanan hasil sebelumnya sebelum memproses file baru.'); return; }
     statsBox.classList.add('hidden');
     if (!inputs.lkpFile.files.length || !inputs.tbFile.files.length) { showNotification('error', 'Silakan upload kedua file terlebih dahulu.'); return; }
     processing = true;
@@ -268,7 +299,7 @@
       // Fetch the current token/cookie pair, including after earlier POSTs or another tab.
       var tokenResponse = await fetch(form.dataset.csrfUrl, { cache: 'no-store', credentials: 'same-origin' });
       if (!tokenResponse.ok) throw new Error('Gagal memperbarui token keamanan. Muat ulang halaman.');
-      var token = await tokenResponse.json();
+      var token = await readJsonResponse(tokenResponse);
       var tokenInput = document.getElementById('csrfToken');
       tokenInput.name = token.name;
       tokenInput.value = token.hash;
@@ -278,7 +309,7 @@
       var requestStarted = performance.now();
       var response = await fetch(url, { method: 'POST', body: data, headers: { 'X-Requested-With': 'XMLHttpRequest' } });
       if (!response.ok) {
-        var body = await response.json().catch(function () { return null; });
+        var body = await readJsonResponse(response).catch(function () { return null; });
         throw new Error(body && body.message ? body.message : (response.status === 403 ? 'Token keamanan ditolak. Silakan coba proses kembali.' : 'Gagal memproses file (HTTP ' + response.status + ').'));
       }
       var contentType = (response.headers.get('Content-Type') || '').toLowerCase();
@@ -306,7 +337,7 @@
       var summary = {};
       if (header) { try { summary = JSON.parse(decodeURIComponent(header)); } catch (ignore) { } }
       renderStats(summary, requestSeconds);
-      showNotification('success', 'Proses selesai.');
+      await showHistoryChoice(summary);
     } catch (err) {
       var message = err && err.message ? err.message : 'Terjadi kesalahan saat memproses data.';
       if (err && err.name === 'TypeError' && /fetch|network|load failed/i.test(message)) {
@@ -319,6 +350,6 @@
 
   // Render chart when DOM is loaded
   document.addEventListener("DOMContentLoaded", function () {
-    initChart();
+    refreshHistoryChart();
   });
 })();

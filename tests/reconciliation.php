@@ -40,7 +40,14 @@ try {
     file_put_contents($lkp, "x|100|x|USD|0002|9|90|0000\nx|100|x| usd |0001|100.25|1000|0000\nx|100|x|USD|0001|-10.10|-100|0000\nx|100|x|USD|0001|999|999|1111\nx|100|x|IDR|0001|5|5|0000\nx|200|x|USD|0001|50|50|1111\nx|100|x|USD|0000|100|100|0000\nx|100|x|USD|9001|12|120|0000\nx|100|x|IDR|w18|8|80|0000\n");
     file_put_contents($tb, "CONCATENATED_SEGMENTS\tPERIOD_NUM\tCURRENCY_CODE\tAMOUNT\tBASE_AMOUNT\n0001-x-20\t6\t UsD \t20.10\t200\n0001-x-10\t6\tUSD\t30\t300\n0001-x-20\t6\tUSD\t-5\t-50\n0001-x-20\t5\tUSD\t999\t999\n0003-x-10\t6\tUSD\t99\t99\n0001-x-30\t6\tUSD\t99\t99\n0001-x-99\t6\tUSD\t99\t99\n0000-x-10\t6\tusd\t10\t20\n0001-x-40\t6\tUSD\t7\t70\n");
     $service = new Reconciliation_service();
-    $stats = $service->process($lkp, $tb, $out);
+    $captured = array();
+    $stats = $service->process($lkp, $tb, $out, 'csv', function ($row, $rationalized) use (&$captured) {
+        $captured[] = array($row, $rationalized);
+    });
+    check(count($captured), 7);
+    check($captured[1][0]['selisih_eqIDR'], '450.00');
+    check($captured[1][1], FALSE);
+    check($stats['sourceDates'], array('x'));
     $handle = fopen($out, 'r');
     $header = fgetcsv($handle, 0, ';');
     $rows = array();
@@ -58,6 +65,8 @@ try {
         array('w18', '100', 'IDR', '', '8.00', '', '', '80.00', '', '')
     ));
     check($stats['resultRows'], 7);
+    check($stats['rasionalisasiRows'], 0);
+    check($stats['nonRasionalisasiRows'], 7);
     check($stats['summary'], array('matched' => 0, 'different' => 1, 'f1Only' => 4, 'efsOnly' => 2, 'rasionalisasi' => 0,
         'f1TotalIDR' => '1195.00', 'efsTotalIDR' => '619.00', 'combinedTotalIDR' => '1814.00', 'f1MatchedGroups' => 1, 'f1UnmatchedGroups' => 4));
     check($stats['unmatchedEfsGroups'], 4);
@@ -92,6 +101,8 @@ try {
     }
     fclose($handle);
     check($rationalizedStats['summary']['different'], 0);
+    check($rationalizedStats['rasionalisasiRows'], 7);
+    check($rationalizedStats['nonRasionalisasiRows'], 0);
     check($rationalizedStats['summary']['rasionalisasi'], 1);
     check($rationalizedStats['summary']['f1MatchedGroups'], 1);
     $service->process($lkp, $tb, $out, 'xlsx');
@@ -110,7 +121,10 @@ try {
     $book->disconnectWorksheets();
     // Highlight only the selected account; unrelated rows retain their default fill.
     $ci->Reconciliation_model->rasionalisasi = array('200' => TRUE);
-    $service->process($lkp, $tb, $out, 'xlsx');
+    $mixedStats = $service->process($lkp, $tb, $out, 'xlsx');
+    check($mixedStats['rasionalisasiRows'], 1);
+    check($mixedStats['nonRasionalisasiRows'], 6);
+    check($mixedStats['rasionalisasiRows'] + $mixedStats['nonRasionalisasiRows'], $mixedStats['resultRows']);
     $book = \PhpOffice\PhpSpreadsheet\IOFactory::load($out);
     check($book->getActiveSheet()->getStyle('A3')->getFill()->getFillType(), 'none');
     check($book->getActiveSheet()->getStyle('J4')->getFill()->getStartColor()->getARGB(), 'FFFFCC80');

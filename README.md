@@ -17,7 +17,24 @@ XLSX uses a temporary worksheet file and ZIP packaging to avoid keeping spreadsh
 
 Processing warnings/errors return JSON instead of being included in the download. The browser checks the response type and file signature before downloading.
 
-Run regression checks with `php tests/reconciliation.php`.
+After processing, choose whether to save the result to the database. Saving creates
+`reconciliation_history` in the configured database and stores all result rows,
+including rationalization status. Its `data_date` comes from the first LKP column
+(f1), accepting YYYYMMDD, YYYY-MM-DD, DD/MM/YYYY, DD-MM-YYYY, or DDMMYYYY.
+All rows in an upload must have one date; invalid or mixed dates still allow the
+file download but disable database saving. Saving replaces existing results for
+that date in a transaction. The chart shows SUM(selisih_eqIDR) by date from saved
+results only, excluding NULL differences for rationalized accounts. Choosing not
+to save removes the temporary results and leaves the chart unchanged.
+
+Pending results expire after two hours and belong to the current browser session.
+Expired files are cleaned on the next processing or save/discard request.
+Deploy `outputs/pending/.htaccess` to deny direct access to temporary data; the
+folder must be writable. Session files use `outputs/sessions`, which must also
+be writable by the PHP/Apache user. Deploy its `.htaccess` to block direct access. The database user needs CREATE, SELECT, INSERT, and
+DELETE permissions. Database tables are created only when saving is selected.
+
+Run regression checks with `php tests/reconciliation.php` and `php tests/history.php`.
 
 Run the synthetic performance check with `php -d memory_limit=512M tests/benchmark_reconciliation.php`.
 It processes 520,010 rows per input and verifies the worksheet content hash for

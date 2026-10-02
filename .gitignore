@@ -3,4 +3,10 @@ uploads/*
 outputs/*
 !uploads/.gitkeep
 !outputs/.gitkeep
+!outputs/pending/
+outputs/pending/*
+!outputs/pending/.htaccess
+!outputs/sessions/
+outputs/sessions/*
+!outputs/sessions/.htaccess
 /vendor/

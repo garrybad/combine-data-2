@@ -7,7 +7,8 @@ class Reconciliation extends CI_Controller
     {
         parent::__construct();
         $this->load->model('Reconciliation_model');
-        $this->load->library(array('reconciliation_parser', 'amount_math', 'excel_exporter', 'reconciliation_service'));
+        $this->load->library(array('reconciliation_parser', 'amount_math', 'excel_exporter', 'reconciliation_service', 'reconciliation_date'));
+        $this->load->library('session');
     }
 
     public function index()
@@ -33,7 +34,8 @@ class Reconciliation extends CI_Controller
         }
 
         $this->output->set_content_type('application/json');
-        $lkp = $tb = $output = NULL;
+        $lkp = $tb = $output = $pending_path = NULL;
+        $pending_handle = NULL;
         $buffer_level = ob_get_level();
         ob_start();
         // Warnings must become an error response, never HTML inside a download.
@@ -52,13 +54,42 @@ class Reconciliation extends CI_Controller
             $output = FCPATH . 'outputs/hasil-rekonsiliasi-' . bin2hex(random_bytes(12)) . '.' . $format;
             if (!is_dir(dirname($output))) @mkdir(dirname($output), 0775, TRUE);
             if (!is_writable(dirname($output))) throw new Exception('Folder outputs tidak dapat ditulis.');
-            $stats = $this->reconciliation_service->process($lkp['path'], $tb['path'], $output, $format);
+            $this->cleanup_pending();
+            $pending_directory = FCPATH . 'outputs/pending';
+            if (!is_dir($pending_directory) && !mkdir($pending_directory, 0775, TRUE))
+                throw new Exception('Folder data sementara tidak dapat dibuat.');
+            $pending_token = bin2hex(random_bytes(24));
+            $pending_path = FCPATH . 'outputs/pending/' . $pending_token . '.jsonl';
+            $pending_handle = fopen($pending_path, 'xb');
+            if (!$pending_handle) throw new Exception('Data sementara tidak dapat dibuat.');
+            $stats = $this->reconciliation_service->process($lkp['path'], $tb['path'], $output, $format,
+                function ($row, $is_rasionalisasi) use ($pending_handle) {
+                    $row['is_rasionalisasi'] = $is_rasionalisasi ? 1 : 0;
+                    $line = json_encode($row);
+                    if ($line === FALSE || fwrite($pending_handle, $line . "\n") !== strlen($line) + 1)
+                        throw new Exception('Gagal menyiapkan data untuk penyimpanan.');
+                });
+            fclose($pending_handle);
+            $pending_handle = NULL;
+            try {
+                $stats['dataDate'] = $this->reconciliation_date->from_source($stats['sourceDates']);
+                if (!$stats['resultRows']) throw new Exception('Tidak ada baris hasil untuk disimpan.');
+                $pending = $this->session->userdata('reconciliation_pending') ?: array();
+                $pending[$pending_token] = array('date' => $stats['dataDate'], 'expires' => time() + 7200);
+                $this->session->set_userdata('reconciliation_pending', $pending);
+                $stats['pendingToken'] = $pending_token;
+            } catch (Exception $date_error) {
+                unlink($pending_path);
+                $stats['saveUnavailableReason'] = $date_error->getMessage();
+            }
+            unset($stats['sourceDates']);
             if (!is_file($output)) throw new Exception('File hasil tidak berhasil dibuat.');
             if (ob_get_length() > 0) throw new Exception('Server menghasilkan output tidak terduga. File tidak diunduh.');
         } catch (Throwable $e) {
             while (ob_get_level() > $buffer_level) ob_end_clean();
             restore_error_handler();
-            foreach (array($lkp ? $lkp['path'] : NULL, $tb ? $tb['path'] : NULL, $output) as $path) {
+            if (is_resource($pending_handle)) fclose($pending_handle);
+            foreach (array($pending_path, $lkp ? $lkp['path'] : NULL, $tb ? $tb['path'] : NULL, $output) as $path) {
                 if ($path && is_file($path)) @unlink($path);
             }
             log_message('error', 'PROCESS_ERROR: ' . $e->getMessage() . ' at ' . $e->getFile() . ':' . $e->getLine());
@@ -79,6 +110,49 @@ class Reconciliation extends CI_Controller
         readfile($output);
         @unlink($output);
         exit;
+    }
+
+    private function cleanup_pending()
+    {
+        foreach (glob(FCPATH . 'outputs/pending/*.jsonl') ?: array() as $path)
+            if (filemtime($path) < time() - 7200) @unlink($path);
+        $pending = $this->session->userdata('reconciliation_pending') ?: array();
+        foreach ($pending as $token => $entry)
+            if ($entry['expires'] < time()) unset($pending[$token]);
+        $this->session->set_userdata('reconciliation_pending', $pending);
+    }
+
+    public function history()
+    {
+        try {
+            $this->output->set_header('Cache-Control: no-store')->set_content_type('application/json')
+                ->set_output(json_encode(array('rows' => $this->Reconciliation_model->get_chart_history())));
+        } catch (Throwable $e) { $this->json_error($e->getMessage(), 500); }
+    }
+
+    public function history_decision()
+    {
+        if ($this->input->method(TRUE) !== 'POST' || !$this->input->is_ajax_request()) {
+            $this->json_error('Request tidak valid.', 400);
+            return;
+        }
+        try {
+            $this->cleanup_pending();
+            $token = (string) $this->input->post('pendingToken');
+            $decision = $this->input->post('decision');
+            $pending = $this->session->userdata('reconciliation_pending') ?: array();
+            if (!preg_match('/^[a-f0-9]{48}$/D', $token) || !isset($pending[$token]))
+                throw new Exception('Data sementara sudah kedaluwarsa atau tidak tersedia. Proses ulang file.');
+            if (!in_array($decision, array('save', 'discard'), TRUE)) throw new Exception('Pilih simpan atau tidak simpan.');
+            @set_time_limit(0);
+            $path = FCPATH . 'outputs/pending/' . $token . '.jsonl';
+            if (!is_file($path)) throw new Exception('Data sementara tidak tersedia. Proses ulang file.');
+            $count = $decision === 'save' ? $this->Reconciliation_model->save_history($pending[$token]['date'], $path) : 0;
+            @unlink($path);
+            unset($pending[$token]);
+            $this->session->set_userdata('reconciliation_pending', $pending);
+            $this->output->set_content_type('application/json')->set_output(json_encode(array('ok' => TRUE, 'savedRows' => $count)));
+        } catch (Throwable $e) { $this->json_error($e->getMessage(), 500); }
     }
 
     private function validate_file($field, $label)

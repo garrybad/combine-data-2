@@ -16,7 +16,7 @@ class Reconciliation_service
         $this->model = $this->CI->Reconciliation_model;
     }
 
-    public function process($lkp_path, $tb_path, $output_path, $format = 'csv')
+    public function process($lkp_path, $tb_path, $output_path, $format = 'csv', $on_result = NULL)
     {
         $started = microtime(TRUE);
         $mapping_rows = $this->model->get_mapping_efs();
@@ -46,17 +46,21 @@ class Reconciliation_service
             'filteredByF8' => 0,
             'unmatchedEfsGroups' => 0,
             'resultRows' => 0,
+            'rasionalisasiRows' => 0,
+            'nonRasionalisasiRows' => 0,
             'duplicateMappingKeys' => $duplicate_mapping,
             'lkpRows' => 0
         );
         $f1_total_idr = 0;
+        $source_dates = array();
         $lkp_groups = array();
         $lkp_handle = fopen($lkp_path, 'rb');
         if (!$lkp_handle)
             throw new Exception('File LKP tidak dapat dibuka.');
         try {
-            $this->parser->parse_lkp_handle($lkp_handle, function ($row) use (&$lkp_groups, &$stats, &$f1_total_idr) {
+            $this->parser->parse_lkp_handle($lkp_handle, function ($row) use (&$lkp_groups, &$stats, &$f1_total_idr, &$source_dates) {
                 $stats['lkpRows']++;
+                $source_dates[$row['f1']] = TRUE;
                 // Parser already trims every source field.
                 $branch = $row['f5'];
                 if ($row['f8'] !== '0000') {
@@ -85,6 +89,7 @@ class Reconciliation_service
         } finally {
             fclose($lkp_handle);
         }
+        $stats['sourceDates'] = array_keys($source_dates);
         $lkp_done = microtime(TRUE);
 
         $efs_groups = array();
@@ -159,6 +164,9 @@ class Reconciliation_service
                 $stats['unmatchedEfsGroups']++;
             }
             $is_rasionalisasi = isset($rasionalisasi_accounts[$lkp['coaF1']]);
+            // Count every exported row, including F1-only and EFS-only groups.
+            if ($is_rasionalisasi) $stats['rasionalisasiRows']++;
+            else $stats['nonRasionalisasiRows']++;
             $difference_ori = $efs === NULL || $is_rasionalisasi ? NULL : $this->amount->subtract_accumulators($lkp['lkp_ori'] === NULL ? 0 : $lkp['lkp_ori'], $efs['efs_ori']);
             $difference_idr = $efs === NULL || $is_rasionalisasi ? NULL : $this->amount->subtract_accumulators($lkp['lkp_eqIDR'] === NULL ? 0 : $lkp['lkp_eqIDR'], $efs['efs_eqIDR']);
             $lkp['lkp_ori'] = $lkp['lkp_ori'] === NULL ? NULL : $this->amount->format_accumulator($lkp['lkp_ori']);
@@ -175,13 +183,15 @@ class Reconciliation_service
             else $summary['different']++;
             if ($efs !== NULL)
                 sort($efs['rincian'], SORT_STRING);
-            $exporter->add_row(array_merge($lkp, array(
+            $result_row = array_merge($lkp, array(
                 'efs_rincianAkun' => $efs === NULL ? NULL : implode(',', $efs['rincian']),
                 'efs_ori' => $efs === NULL ? NULL : $this->amount->format_accumulator($efs['efs_ori']),
                 'selisih_ori' => $difference_ori,
                 'efs_eqIDR' => $efs === NULL ? NULL : $this->amount->format_accumulator($efs['efs_eqIDR']),
                 'selisih_eqIDR' => $difference_idr
-            )), $is_rasionalisasi);
+            ));
+            $exporter->add_row($result_row, $is_rasionalisasi);
+            if ($on_result !== NULL) call_user_func($on_result, $result_row, $is_rasionalisasi);
             $stats['resultRows']++;
         }
 

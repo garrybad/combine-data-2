@@ -111,27 +111,32 @@
         </form>
       </section>
 
+      <section id="historyChoice" class="card hidden"
+        data-save-url="<?= htmlspecialchars(parse_url(site_url('reconciliation/history_decision'), PHP_URL_PATH), ENT_QUOTES, 'UTF-8') ?>"
+        data-history-url="<?= htmlspecialchars(parse_url(site_url('reconciliation/history'), PHP_URL_PATH), ENT_QUOTES, 'UTF-8') ?>">
+        <h2>Simpan hasil ke database</h2>
+        <p id="historyStatus" role="status" aria-live="polite"></p>
+        <label for="historyDecision">Pilihan penyimpanan</label>
+        <div class="download-options">
+          <div class="format-select">
+            <select id="historyDecision">
+              <option value="">Pilih setelah proses selesai</option>
+              <option value="save">Simpan ke database dan tampilkan di chart</option>
+              <option value="discard">Tidak simpan ke database</option>
+            </select>
+          </div>
+          <button id="historyApply" class="primary" type="button" disabled>Terapkan pilihan</button>
+        </div>
+      </section>
+
       <section id="charts" class="chart-fx">
         <div class="stats-head">
           <div>
             <h2>Chart</h2>
-            <p>Statistik hasil processing dari backend.</p>
           </div>
         </div>
 
-        <h3 class="stat-section-title">Tren Selisih per Hari (Contoh)</h3>
-        <div class="download-options">
-          <div class="format-select">
-            <select id="trendMetric" name="trendMetric" aria-describedby="trendMetricHint">
-              <option value="idr">Selisih IDR</option>
-              <option value="ori">Selisih Original</option>
-            </select>
-            <svg class="format-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-              stroke-width="2" aria-hidden="true">
-              <path d="m6 9 6 6 6-6" />
-            </svg>
-          </div>
-        </div>
+        <h3 class="stat-section-title">Tren Selisih IDR per Hari</h3>
         <p id="trendNote" style="font-size:12px; color:#777; margin-top:10px;"></p>
         <div class="chart-container"
           style="position: relative; height:250px; width:100%; margin-top: 15px; background: #fff; border: 1px solid #e8e4df; border-radius: 12px; padding: 15px;">
