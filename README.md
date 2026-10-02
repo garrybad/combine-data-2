@@ -10,7 +10,8 @@ Migrated from the supplied Next.js application to CodeIgniter 3 for the target s
 4. Parse LKP as `f1 | f2 | f3 | f4 | f5 | f6 | f7 | f8`. Keep only rows with f8 = `0000` before grouping by f5 (branch), f2 (coaF1), and normalized f4 (currency), then sum f6 and f7.
 5. Normalize EFS and LKP currency with UPPER(TRIM(currency)). Combine LKP LEFT JOIN EFS with EFS-only groups (UNION ALL), matching branch, coaF1, and currency. Exclude branch `0000` from both sides and order the combined result by those three keys. Currency mismatches remain as separate rows.
 6. For matching groups, calculate LKP minus EFS using exact two-decimal string arithmetic. LKP-only groups have NULL EFS values and differences. EFS-only groups have NULL LKP values and differences of 0 minus EFS. NULL values export as blank cells in CSV/XLSX.
-7. Choose CSV or XLSX in the form. Both formats export 10 columns to `hasil-kombinasi.csv` or `hasil-kombinasi.xlsx`: branch, coaF1, currency, efs_rincianAkun, lkp_ori, efs_ori, selisih_ori, lkp_eqIDR, efs_eqIDR, selisih_eqIDR.
+7. Read `GL_Rasionalisasi` (`SL F1`, `Status`) from the configured database. If any row for a coaF1 has `UPPER(TRIM(Status)) = RASIONALISASI`, export both differences as NULL, including EFS-only groups. Keep source amounts unchanged.
+8. Choose CSV or XLSX in the form. Both formats export 10 columns to `hasil-kombinasi.csv` or `hasil-kombinasi.xlsx`: branch, coaF1, currency, efs_rincianAkun, lkp_ori, efs_ori, selisih_ori, lkp_eqIDR, efs_eqIDR, selisih_eqIDR.
 
 XLSX uses a temporary worksheet file and ZIP packaging to avoid keeping spreadsheet cells in memory. It preserves leading zeroes in identity columns and uses numeric amount cells. PHP ZipArchive is required; the outputs directory must be writable. XLSX is limited to 1,048,575 data rows (plus the header); use CSV for larger results. CSV uses semicolons; import using that delimiter if Excel does not separate columns automatically.
 

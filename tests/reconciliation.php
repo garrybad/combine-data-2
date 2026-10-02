@@ -11,6 +11,8 @@ function &get_instance()
 class MappingFixture
 {
     public $rows = array();
+    public $rasionalisasi = array();
+    public function get_rasionalisasi_accounts() { return $this->rasionalisasi; }
     public function get_mapping_efs()
     {
         return $this->rows;
@@ -56,7 +58,7 @@ try {
         array('w18', '100', 'IDR', '', '8.00', '', '', '80.00', '', '')
     ));
     check($stats['resultRows'], 7);
-    check($stats['summary'], array('matched' => 0, 'different' => 1, 'f1Only' => 4, 'efsOnly' => 2,
+    check($stats['summary'], array('matched' => 0, 'different' => 1, 'f1Only' => 4, 'efsOnly' => 2, 'rasionalisasi' => 0,
         'f1TotalIDR' => '1195.00', 'efsTotalIDR' => '619.00', 'combinedTotalIDR' => '1814.00', 'f1MatchedGroups' => 1, 'f1UnmatchedGroups' => 4));
     check($stats['unmatchedEfsGroups'], 4);
     check($stats['lkpRows'], 9);
@@ -78,6 +80,26 @@ try {
     check((string) $sheet->getCell('G6')->getValue(), '-99');
     check($sheet->getFreezePane(), 'A2');
     $book->disconnectWorksheets();
+
+    // Suppress both differences for matched, F1-only, and EFS-only accounts.
+    $ci->Reconciliation_model->rasionalisasi = array('100' => TRUE, '200' => TRUE);
+    $rationalizedStats = $service->process($lkp, $tb, $out);
+    $handle = fopen($out, 'r');
+    fgetcsv($handle, 0, ';');
+    foreach ($rows as $expected) {
+        $expected[6] = $expected[9] = '';
+        check(fgetcsv($handle, 0, ';'), $expected);
+    }
+    fclose($handle);
+    check($rationalizedStats['summary']['different'], 0);
+    check($rationalizedStats['summary']['rasionalisasi'], 1);
+    check($rationalizedStats['summary']['f1MatchedGroups'], 1);
+    $service->process($lkp, $tb, $out, 'xlsx');
+    $book = \PhpOffice\PhpSpreadsheet\IOFactory::load($out);
+    foreach (array('G3', 'J3', 'G4', 'J4', 'G6', 'J6') as $cell)
+        check($book->getActiveSheet()->getCell($cell)->getValue(), NULL);
+    $book->disconnectWorksheets();
+    $ci->Reconciliation_model->rasionalisasi = array();
 
     // Duplicate mapping rows multiply EFS values just as a SQL LEFT JOIN does.
     $ci->Reconciliation_model->rows[] = array('rincianAkun' => '10', 'coaF1' => '100');

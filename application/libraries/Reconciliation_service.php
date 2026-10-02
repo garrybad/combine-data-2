@@ -20,6 +20,7 @@ class Reconciliation_service
     {
         $started = microtime(TRUE);
         $mapping_rows = $this->model->get_mapping_efs();
+        $rasionalisasi_accounts = $this->model->get_rasionalisasi_accounts();
 
         $mapping_by_rincian = array();
         foreach ($mapping_rows as $row) {
@@ -148,7 +149,7 @@ class Reconciliation_service
         // Native sorting avoids millions of PHP comparator calls on large results.
         ksort($lkp_groups, SORT_STRING);
         $sort_done = microtime(TRUE);
-        $summary = array('matched' => 0, 'different' => 0, 'f1Only' => 0, 'efsOnly' => 0,
+        $summary = array('matched' => 0, 'different' => 0, 'f1Only' => 0, 'efsOnly' => 0, 'rasionalisasi' => 0,
             'f1TotalIDR' => $f1_total_idr, 'efsTotalIDR' => 0);
         $exporter = new Excel_exporter();
         $exporter->start($format);
@@ -157,8 +158,9 @@ class Reconciliation_service
             if ($efs === NULL) {
                 $stats['unmatchedEfsGroups']++;
             }
-            $difference_ori = $efs === NULL ? NULL : $this->amount->subtract_accumulators($lkp['lkp_ori'] === NULL ? 0 : $lkp['lkp_ori'], $efs['efs_ori']);
-            $difference_idr = $efs === NULL ? NULL : $this->amount->subtract_accumulators($lkp['lkp_eqIDR'] === NULL ? 0 : $lkp['lkp_eqIDR'], $efs['efs_eqIDR']);
+            $is_rasionalisasi = isset($rasionalisasi_accounts[$lkp['coaF1']]);
+            $difference_ori = $efs === NULL || $is_rasionalisasi ? NULL : $this->amount->subtract_accumulators($lkp['lkp_ori'] === NULL ? 0 : $lkp['lkp_ori'], $efs['efs_ori']);
+            $difference_idr = $efs === NULL || $is_rasionalisasi ? NULL : $this->amount->subtract_accumulators($lkp['lkp_eqIDR'] === NULL ? 0 : $lkp['lkp_eqIDR'], $efs['efs_eqIDR']);
             $lkp['lkp_ori'] = $lkp['lkp_ori'] === NULL ? NULL : $this->amount->format_accumulator($lkp['lkp_ori']);
             $lkp['lkp_eqIDR'] = $lkp['lkp_eqIDR'] === NULL ? NULL : $this->amount->format_accumulator($lkp['lkp_eqIDR']);
             // Statistics describe the existing output; they do not alter reconciliation.
@@ -168,6 +170,7 @@ class Reconciliation_service
             }
             if ($efs === NULL) $summary['f1Only']++;
             elseif ($lkp['lkp_ori'] === NULL) $summary['efsOnly']++;
+            elseif ($is_rasionalisasi) $summary['rasionalisasi']++;
             elseif ($difference_ori === '0.00' && $difference_idr === '0.00') $summary['matched']++;
             else $summary['different']++;
             if ($efs !== NULL)
@@ -185,7 +188,7 @@ class Reconciliation_service
         $summary['f1TotalIDR'] = $this->amount->format_accumulator($summary['f1TotalIDR']);
         $summary['efsTotalIDR'] = $this->amount->format_accumulator($summary['efsTotalIDR']);
         $summary['combinedTotalIDR'] = $this->amount->sum($summary['f1TotalIDR'], $summary['efsTotalIDR']);
-        $summary['f1MatchedGroups'] = $summary['matched'] + $summary['different'];
+        $summary['f1MatchedGroups'] = $summary['matched'] + $summary['different'] + $summary['rasionalisasi'];
         $summary['f1UnmatchedGroups'] = $summary['f1Only'];
         $stats['summary'] = $summary;
         $write_done = microtime(TRUE);
@@ -202,7 +205,7 @@ class Reconciliation_service
             'saveFile' => round($finished - $write_done, 3),
             'total' => round($finished - $started, 3)
         );
-        $stats['processorVersion'] = '2026-09-30.4';
+        $stats['processorVersion'] = '2026-10-02.1';
         $stats['runtime'] = array(
             'phpVersion' => PHP_VERSION,
             'integerBits' => PHP_INT_SIZE * 8,

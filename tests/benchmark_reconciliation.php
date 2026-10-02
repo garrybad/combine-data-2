@@ -8,6 +8,7 @@ foreach (array('Amount_math', 'Reconciliation_parser', 'Reconciliation_service',
 }
 function &get_instance() { global $ci; return $ci; }
 class BenchmarkMapping {
+    public function get_rasionalisasi_accounts() { return array(); }
     public function get_mapping_efs() { return array(array('rincianAkun' => '10', 'coaF1' => '100')); }
 }
 $ci = new stdClass();

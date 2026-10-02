@@ -3,6 +3,21 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 
 class Reconciliation_model extends CI_Model
 {
+    public function get_rasionalisasi_accounts()
+    {
+        $query = $this->db->query("SELECT `SL F1` AS coaF1,
+            MAX(CASE WHEN UPPER(TRIM(`Status`)) = 'RASIONALISASI' THEN 1 ELSE 0 END) AS is_rasionalisasi
+            FROM `GL_Rasionalisasi` GROUP BY `SL F1`");
+        if ($query === FALSE)
+            throw new Exception('Tabel GL_Rasionalisasi tidak dapat dibaca. Pastikan kolom SL F1 dan Status tersedia.');
+        $accounts = array();
+        foreach ($query->result_array() as $row) {
+            if ($row['coaF1'] !== NULL && (int) $row['is_rasionalisasi'] === 1)
+                $accounts[trim((string) $row['coaF1'])] = TRUE;
+        }
+        return $accounts;
+    }
+
     public function get_mapping_efs()
     {
         $rows = $this->db->get('mappingEfs')->result_array();

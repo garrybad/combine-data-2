@@ -15,7 +15,14 @@
     <div class="shell">
       <header class="header">
         <div class="brand-row">
-          <div class="brand-icon">↑</div>
+          <div class="brand-icon" aria-hidden="true">
+            <svg width="30" height="30" viewBox="0 0 32 32" fill="none" stroke="currentColor"
+              stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M6 13V6a2 2 0 0 1 2-2h6l3 3h9a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-2" />
+              <path d="M4 13h6l3 3h9a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V15a2 2 0 0 1 2-2Z"
+                fill="#ff6e00" />
+            </svg>
+          </div>
           <div>
             <h1>Rekonsiliasi Data</h1>
             <p>Gabungkan data F1 dan data EFS, lalu unduh hasil selisih dalam format Excel atau CSV.</p>
