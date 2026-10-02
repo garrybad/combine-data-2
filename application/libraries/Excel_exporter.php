@@ -38,11 +38,11 @@ class Excel_exporter
         }
     }
 
-    public function add_row($row)
+    public function add_row($row, $highlight = FALSE)
     {
         $values = array();
         foreach ($this->headers as $header) $values[] = $row[$header];
-        if ($this->format === 'xlsx') $this->write_xlsx_row($values);
+        if ($this->format === 'xlsx') $this->write_xlsx_row($values, FALSE, $highlight);
         else $this->write_csv($values);
     }
 
@@ -67,19 +67,25 @@ class Excel_exporter
         rewind($this->buffer);
     }
 
-    private function write_xlsx_row($values, $header = FALSE)
+    private function write_xlsx_row($values, $header = FALSE, $highlight = FALSE)
     {
         if (++$this->row_number > 1048576) throw new Exception('Hasil melebihi batas baris XLSX. Pilih format CSV.');
         $xml = '<row r="' . $this->row_number . '">';
         foreach ($values as $index => $value) {
-            if ($value === NULL) continue;
+            if ($value === NULL && !$highlight) continue;
             $reference = chr(65 + $index) . $this->row_number;
+            $style = $header ? 1 : ($index >= 4 ? ($highlight ? 4 : 2) : ($highlight ? 3 : 0));
+            // Include blank cells so the fill spans all ten columns.
+            if ($value === NULL) {
+                $xml .= '<c r="' . $reference . '" s="' . $style . '"/>';
+                continue;
+            }
             if (!$header && $index >= 4) {
-                $xml .= '<c r="' . $reference . '" s="2"><v>' . htmlspecialchars($value, ENT_XML1, 'UTF-8') . '</v></c>';
+                $xml .= '<c r="' . $reference . '" s="' . $style . '"><v>' . htmlspecialchars($value, ENT_XML1, 'UTF-8') . '</v></c>';
             } else {
                 // Explicit strings preserve leading zeroes and never become Excel formulas.
                 $value = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F]/', '', (string) $value);
-                $xml .= '<c r="' . $reference . '" t="inlineStr" s="' . ($header ? '1' : '0') . '"><is><t xml:space="preserve">' . htmlspecialchars($value, ENT_XML1 | ENT_QUOTES, 'UTF-8') . '</t></is></c>';
+                $xml .= '<c r="' . $reference . '" t="inlineStr" s="' . $style . '"><is><t xml:space="preserve">' . htmlspecialchars($value, ENT_XML1 | ENT_QUOTES, 'UTF-8') . '</t></is></c>';
             }
         }
         $this->write($xml . '</row>');
@@ -106,7 +112,7 @@ class Excel_exporter
                 '_rels/.rels' => '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>',
                 'xl/workbook.xml' => '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Rekonsiliasi" sheetId="1" r:id="rId1"/></sheets></workbook>',
                 'xl/_rels/workbook.xml.rels' => '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>',
-                'xl/styles.xml' => '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="4" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>'
+                'xl/styles.xml' => '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFFFCC80"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="5"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="4" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="0" fontId="0" fillId="2" borderId="0" xfId="0" applyFill="1"/><xf numFmtId="4" fontId="0" fillId="2" borderId="0" xfId="0" applyNumberFormat="1" applyFill="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>'
             );
             foreach ($files as $name => $xml) {
                 if (!$zip->addFromString($name, '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' . $xml)) throw new Exception('Gagal menulis komponen XLSX.');

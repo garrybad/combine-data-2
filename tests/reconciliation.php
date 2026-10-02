@@ -98,6 +98,22 @@ try {
     $book = \PhpOffice\PhpSpreadsheet\IOFactory::load($out);
     foreach (array('G3', 'J3', 'G4', 'J4', 'G6', 'J6') as $cell)
         check($book->getActiveSheet()->getCell($cell)->getValue(), NULL);
+    foreach (range('A', 'J') as $column) {
+        foreach (range(2, 8) as $rowNumber) {
+            $fill = $book->getActiveSheet()->getStyle($column . $rowNumber)->getFill();
+            check($fill->getFillType(), 'solid');
+            check($fill->getStartColor()->getARGB(), 'FFFFCC80');
+        }
+    }
+    check($book->getActiveSheet()->getStyle('A1')->getFill()->getFillType(), 'none');
+    check($book->getActiveSheet()->getStyle('E3')->getNumberFormat()->getFormatCode(), '#,##0.00');
+    $book->disconnectWorksheets();
+    // Highlight only the selected account; unrelated rows retain their default fill.
+    $ci->Reconciliation_model->rasionalisasi = array('200' => TRUE);
+    $service->process($lkp, $tb, $out, 'xlsx');
+    $book = \PhpOffice\PhpSpreadsheet\IOFactory::load($out);
+    check($book->getActiveSheet()->getStyle('A3')->getFill()->getFillType(), 'none');
+    check($book->getActiveSheet()->getStyle('J4')->getFill()->getStartColor()->getARGB(), 'FFFFCC80');
     $book->disconnectWorksheets();
     $ci->Reconciliation_model->rasionalisasi = array();
 

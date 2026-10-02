@@ -181,7 +181,7 @@ class Reconciliation_service
                 'selisih_ori' => $difference_ori,
                 'efs_eqIDR' => $efs === NULL ? NULL : $this->amount->format_accumulator($efs['efs_eqIDR']),
                 'selisih_eqIDR' => $difference_idr
-            )));
+            )), $is_rasionalisasi);
             $stats['resultRows']++;
         }
 
