@@ -111,23 +111,9 @@
         </form>
       </section>
 
-      <section id="historyChoice" class="card hidden"
+      <div id="historyChoice" hidden
         data-save-url="<?= htmlspecialchars(parse_url(site_url('reconciliation/history_decision'), PHP_URL_PATH), ENT_QUOTES, 'UTF-8') ?>"
-        data-history-url="<?= htmlspecialchars(parse_url(site_url('reconciliation/history'), PHP_URL_PATH), ENT_QUOTES, 'UTF-8') ?>">
-        <h2>Simpan hasil ke database</h2>
-        <p id="historyStatus" role="status" aria-live="polite"></p>
-        <label for="historyDecision">Pilihan penyimpanan</label>
-        <div class="download-options">
-          <div class="format-select">
-            <select id="historyDecision">
-              <option value="">Pilih setelah proses selesai</option>
-              <option value="save">Simpan ke database dan tampilkan di chart</option>
-              <option value="discard">Tidak simpan ke database</option>
-            </select>
-          </div>
-          <button id="historyApply" class="primary" type="button" disabled>Terapkan pilihan</button>
-        </div>
-      </section>
+        data-history-url="<?= htmlspecialchars(parse_url(site_url('reconciliation/history'), PHP_URL_PATH), ENT_QUOTES, 'UTF-8') ?>"></div>
 
       <section id="charts" class="chart-fx">
         <div class="stats-head">

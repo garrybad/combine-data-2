@@ -89,9 +89,7 @@
     return '<div class="stat"><small>' + label + '</small><strong>' + formatted + '</strong></div>';
   }
   var historyChoice = document.getElementById('historyChoice');
-  var historyDecision = document.getElementById('historyDecision');
-  var historyApply = document.getElementById('historyApply');
-  var historyStatus = document.getElementById('historyStatus');
+  var historyStatus = '';
   var pendingToken = null;
   var savingHistory = false;
 
@@ -115,7 +113,6 @@
       if (!response.ok) throw new Error(body.message || 'Gagal memuat riwayat.');
       var rows = body.rows || [];
       if (selisihChartInstance) { selisihChartInstance.destroy(); selisihChartInstance = null; }
-      note.textContent = rows.length ? 'Total selisih IDR dari data yang disimpan, berdasarkan tanggal pada kolom f1. Akun Rasionalisasi tidak dihitung.' : 'Belum ada data tersimpan. Simpan hasil proses ke database untuk menampilkan chart.';
       if (!rows.length) return;
       if (!window.Chart) { note.textContent += ' Pustaka grafik belum dimuat.'; return; }
       selisihChartInstance = new Chart(document.getElementById('selisihChart'), {
@@ -131,7 +128,7 @@
           plugins: { legend: { display: false }, tooltip: { callbacks: {
             label: function (context) { return 'Selisih IDR: Rp ' + formatNumber(context.raw); }
           } } },
-          scales: { y: { title: { display: true, text: 'Selisih IDR' } }, x: { title: { display: true, text: 'Tanggal F1' } } }
+          scales: { y: { title: { display: true, text: 'Selisih IDR' } }, x: { title: { display: true } } }
         }
       });
     } catch (err) { note.textContent = err.message || 'Gagal memuat chart dari database.'; }
@@ -139,16 +136,12 @@
 
   async function showHistoryChoice(summary) {
     pendingToken = summary.pendingToken || null;
-    historyDecision.value = '';
-    historyDecision.disabled = !pendingToken;
-    historyApply.disabled = true;
-    historyStatus.textContent = pendingToken
+    historyStatus = pendingToken
       ? 'Tanggal data: ' + summary.dataDate + '. Simpan seluruh baris hasil ke tabel riwayat. Data tanggal yang sama akan diganti. Pilihan tersedia selama 2 jam.'
       : (summary.saveUnavailableReason || 'Data tidak tersedia untuk disimpan.');
-    historyChoice.classList.remove('hidden');
     if (!notification) return;
     if (!pendingToken) {
-      await notification.fire({ icon: 'info', title: 'File telah diunduh', text: historyStatus.textContent });
+      await notification.fire({ icon: 'info', title: 'File telah diunduh', text: historyStatus });
       return;
     }
     async function choose(decision) {
@@ -179,19 +172,15 @@
       await notification.fire({
         icon: 'success',
         title: result.isConfirmed ? 'Data berhasil disimpan' : 'Selesai',
-        text: historyStatus.textContent
+        text: historyStatus
       });
     }
   }
 
-  historyDecision.addEventListener('change', function () {
-    historyApply.disabled = savingHistory || !pendingToken || !historyDecision.value;
-  });
   async function applyHistoryDecision(decision) {
     if (savingHistory || !pendingToken) throw new Error('Data belum tersedia atau sedang disimpan.');
     savingHistory = true;
-    historyApply.disabled = historyDecision.disabled = true;
-    historyStatus.textContent = decision === 'save' ? 'Menyimpan hasil ke database…' : 'Menghapus data sementara…';
+    historyStatus = decision === 'save' ? 'Menyimpan hasil ke database…' : 'Menghapus data sementara…';
     try {
       var tokenResponse = await fetch(form.dataset.csrfUrl, { cache: 'no-store', credentials: 'same-origin' });
       if (!tokenResponse.ok) throw new Error('Gagal memperbarui token keamanan.');
@@ -205,25 +194,17 @@
       var body = await readJsonResponse(response);
       if (!response.ok || !body.ok) throw new Error(body.message || 'Pilihan penyimpanan gagal diterapkan.');
       pendingToken = null;
-      historyStatus.textContent = decision === 'save'
+      historyStatus = decision === 'save'
         ? formatNumber(body.savedRows) + ' baris disimpan ke database. Chart diperbarui.'
         : 'Data tidak disimpan ke database dan tidak ditambahkan ke chart.';
       if (decision === 'save') await refreshHistoryChart();
     } catch (err) {
-      historyStatus.textContent = err.message || 'Penyimpanan gagal. Silakan coba lagi.';
+      historyStatus = err.message || 'Penyimpanan gagal. Silakan coba lagi.';
       throw err;
     } finally {
       savingHistory = false;
-      historyDecision.disabled = !pendingToken;
-      historyApply.disabled = !pendingToken || !historyDecision.value;
     }
   }
-  historyApply.addEventListener('click', async function () {
-    if (savingHistory || !pendingToken || !historyDecision.value) return;
-    try { await applyHistoryDecision(historyDecision.value); }
-    catch (err) { showNotification('error', err.message || 'Penyimpanan gagal. Silakan coba lagi.'); }
-  });
-
   function renderStats(s, requestSeconds) {
     var f1Items = [
       ['Baris F1', s.lkpRows], ['Terfilter f8', s.filteredByF8],
@@ -249,15 +230,13 @@
 
     var r = s.summary;
     if (r) {
-      document.getElementById('statGridF1').innerHTML += nominalCard('Total F1 IDR (F7 setelah filter)', r.f1TotalIDR);
       document.getElementById('statGridEfs').innerHTML += nominalCard('Total EFS dalam IDR', r.efsTotalIDR);
       document.getElementById('statGridResult').innerHTML += buildHtml([
-        ['F1 match dengan EFS (kelompok)', r.f1MatchedGroups],
-        ['F1 tidak match dengan EFS (kelompok)', r.f1UnmatchedGroups],
-        ['EFS tanpa pasangan F1 (kelompok)', r.efsOnly]
+        ['F1 match dengan EFS', r.f1MatchedGroups],
+        ['F1 tidak match dengan EFS', r.f1UnmatchedGroups],
+        ['EFS tanpa pasangan F1', r.efsOnly]
       ]) + nominalCard('Total gabungan F1 + EFS (IDR)', r.combinedTotalIDR);
     }
-
 
     // var durations = [['Upload sampai hasil diterima', requestSeconds]];
     // if (s.timingsSeconds) {
@@ -288,7 +267,6 @@
   form.addEventListener('submit', async function (e) {
     e.preventDefault();
     if (processing) return;
-    if (pendingToken || savingHistory) { showNotification('error', 'Terapkan pilihan penyimpanan hasil sebelumnya sebelum memproses file baru.'); return; }
     statsBox.classList.add('hidden');
     if (!inputs.lkpFile.files.length || !inputs.tbFile.files.length) { showNotification('error', 'Silakan upload kedua file terlebih dahulu.'); return; }
     processing = true;
