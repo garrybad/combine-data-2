@@ -3,16 +3,19 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 
 class Reconciliation_parser
 {
-    public function parse_delimited_line($line, $delimiter)
+    public function parse_delimited_line($line, $delimiter, $trim_fields = TRUE)
     {
         // Most source rows have no quoted fields; avoid a PHP loop per byte.
-        if (strpos($line, '"') === FALSE) return array_map('trim', explode($delimiter, $line));
+        if (strpos($line, '"') === FALSE) {
+            $fields = explode($delimiter, $line);
+            return $trim_fields ? array_map('trim', $fields) : $fields;
+        }
         // Fully quoted exports are common. Split at field boundaries in native
         // code; retain the general parser for embedded delimiters/escaped quotes.
         if (substr($line, 0, 1) === '"' && substr($line, -1) === '"') {
             $fields = explode('"' . $delimiter . '"', substr($line, 1, -1));
             if (strpos(implode('', $fields), '"') === FALSE) {
-                return array_map('trim', $fields);
+                return $trim_fields ? array_map('trim', $fields) : $fields;
             }
         }
         $values = array();
@@ -31,20 +34,20 @@ class Reconciliation_parser
                 continue;
             }
             if ($char === $delimiter && !$in_quotes) {
-                $values[] = trim($current);
+                $values[] = $trim_fields ? trim($current) : $current;
                 $current = '';
                 continue;
             }
             $current .= $char;
         }
-        $values[] = trim($current);
+        $values[] = $trim_fields ? trim($current) : $current;
         return $values;
     }
 
     public function normalize_line($line)
     {
         $line = rtrim($line, "\r\n");
-        return preg_replace('/^\xEF\xBB\xBF/', '', $line);
+        return strncmp($line, "\xEF\xBB\xBF", 3) === 0 ? substr($line, 3) : $line;
     }
 
     public function parse_lkp_handle($handle, callable $on_row)
@@ -92,8 +95,7 @@ class Reconciliation_parser
 
             // Wide monthly files often contain many unused columns. Still validate
             // their count, but only trim and construct the fields the service needs.
-            $values = $required_only && strpos($line, '"') === FALSE
-                ? explode("\t", $line) : $this->parse_delimited_line($line, "\t");
+            $values = $this->parse_delimited_line($line, "\t", !$required_only);
             if (count($values) !== count($headers)) {
                 throw new Exception('Format file TB Juni tidak valid pada baris ' . $line_no . '. Ditemukan ' . count($values) . ' kolom, seharusnya ' . count($headers) . ' kolom.');
             }

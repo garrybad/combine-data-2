@@ -400,6 +400,14 @@ p {
     font-size: 19px
 }
 
+.stat-nominal {
+    min-width: 0
+}
+
+.stat-nominal strong {
+    white-space: nowrap
+}
+
 .success-pill {
     background: #eaf9ef;
     color: #19703d

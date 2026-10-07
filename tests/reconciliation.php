@@ -253,6 +253,18 @@ try {
     check(count($projected), 5);
     check($projected['AMOUNT'], '2');
     fclose($stream);
+    // Quoted wide exports trim selected fields and retain escaped delimiters.
+    foreach (array('" unused "', '"unused""value"') as $extra) {
+        $stream = fopen('php://memory', 'w+b');
+        fwrite($stream, "EXTRA\tAMOUNT\tPERIOD_NUM\tCURRENCY_CODE\tCONCATENATED_SEGMENTS\tBASE_AMOUNT\n" .
+            $extra . "\t\" 1.25 \"\t\" 6 \"\t\" USD \"\t\" 0001-x-20 \"\t\" 3.50 \"\n");
+        rewind($stream);
+        $ci->reconciliation_parser->parse_tb_handle($stream, function ($row) use (&$projected) {
+            $projected = $row; }, TRUE);
+        check($projected, array('AMOUNT' => '1.25', 'PERIOD_NUM' => '6',
+            'CURRENCY_CODE' => 'USD', 'CONCATENATED_SEGMENTS' => '0001-x-20', 'BASE_AMOUNT' => '3.50'));
+        fclose($stream);
+    }
     // Encoded group keys must preserve tuple order and avoid collisions.
     $method = new ReflectionMethod('Reconciliation_service', 'group_key');
     $method->setAccessible(TRUE);

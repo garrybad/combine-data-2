@@ -86,7 +86,25 @@
       var parts = amount.split('.');
       formatted = 'Rp ' + parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.') + ',' + parts[1];
     }
-    return '<div class="stat"><small>' + label + '</small><strong>' + formatted + '</strong></div>';
+    return '<div class="stat stat-nominal"><small>' + label + '</small><strong>' + formatted + '</strong></div>';
+  }
+  function fitNominalAmounts() {
+    statsBox.querySelectorAll('.stat-nominal strong').forEach(function (amount) {
+      amount.style.fontSize = '';
+      var available = amount.clientWidth;
+      if (available > 0 && amount.scrollWidth > available) {
+        var size = parseFloat(window.getComputedStyle(amount).fontSize);
+        amount.style.fontSize = (Math.floor(size * available / amount.scrollWidth * 100) / 100) + 'px';
+      }
+    });
+  }
+  if (window.ResizeObserver) {
+    var nominalResizeObserver = new ResizeObserver(fitNominalAmounts);
+    ['statGridEfs', 'statGridResult'].forEach(function (id) {
+      nominalResizeObserver.observe(document.getElementById(id));
+    });
+  } else {
+    window.addEventListener('resize', fitNominalAmounts);
   }
   var historyChoice = document.getElementById('historyChoice');
   var historyStatus = '';
@@ -237,6 +255,7 @@
         ['EFS tanpa pasangan F1', r.efsOnly]
       ]) + nominalCard('Total gabungan F1 + EFS (IDR)', r.combinedTotalIDR);
     }
+    fitNominalAmounts();
 
     // var durations = [['Upload sampai hasil diterima', requestSeconds]];
     // if (s.timingsSeconds) {

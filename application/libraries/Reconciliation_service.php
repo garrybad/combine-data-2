@@ -215,7 +215,7 @@ class Reconciliation_service
             'saveFile' => round($finished - $write_done, 3),
             'total' => round($finished - $started, 3)
         );
-        $stats['processorVersion'] = '2026-10-02.1';
+        $stats['processorVersion'] = '2026-10-07.1';
         $stats['runtime'] = array(
             'phpVersion' => PHP_VERSION,
             'integerBits' => PHP_INT_SIZE * 8,
