@@ -19,6 +19,39 @@
   });
   var submit = document.getElementById('submitBtn');
   var statsBox = document.getElementById('stats');
+  var statExplanations = {
+    unmatchedRincianAkun: {
+      title: 'Baris tanpa mapping',
+      text: 'Jumlah baris EFS yang rincian akunnya tidak ditemukan di tabel mapping. Baris ini tidak dimasukkan ke hasil.'
+    },
+    mappedRows: {
+      title: 'Baris dengan mapping',
+      text: 'Jumlah baris EFS yang rincian akunnya ditemukan di tabel mapping. Mapping dengan COA F1 kosong tetap terhitung, tetapi tidak dimasukkan ke hasil.'
+    },
+    filteredByF8: {
+      title: 'Terfilter f8',
+      text: 'Jumlah baris F1 yang lolos filter dengan nilai kolom f8 = 0000.'
+    },
+    f1MatchedGroups: {
+      title: 'F1 match dengan EFS',
+      text: 'Jumlah kelompok F1 yang memiliki pasangan EFS dengan cabang, COA F1, dan mata uang yang sama. Nominalnya masih bisa berbeda.'
+    },
+    f1UnmatchedGroups: {
+      title: 'F1 tidak match dengan EFS',
+      text: 'Jumlah kelompok F1 yang tidak memiliki pasangan EFS dengan cabang, COA F1, dan mata uang yang sama.'
+    }
+  };
+  statsBox.addEventListener('click', function (event) {
+    var button = event.target.closest('[data-stat-info]');
+    if (!button || !statsBox.contains(button)) return;
+    var explanation = statExplanations[button.dataset.statInfo];
+    if (!explanation) return;
+    if (notification) {
+      notification.fire({ icon: 'info', title: explanation.title, text: explanation.text });
+    } else {
+      window.alert(explanation.title + '\n\n' + explanation.text);
+    }
+  });
   var readyBadge = document.getElementById('readyBadge');
   var inputs = { lkpFile: document.getElementById('lkpInput'), tbFile: document.getElementById('tbInput') };
 
@@ -225,10 +258,10 @@
   }
   function renderStats(s, requestSeconds) {
     var f1Items = [
-      ['Baris F1', s.lkpRows], ['Terfilter f8', s.filteredByF8],
+      ['Baris F1', s.lkpRows], ['Terfilter f8', s.filteredByF8, 'filteredByF8'],
     ];
     var efsItems = [
-      ['Baris EFS', s.tbRows], ['Baris tanpa mapping akun', s.unmatchedRincianAkun], ['Baris dengan mapping', s.mappedRows]
+      ['Baris EFS', s.tbRows], ['Baris tanpa mapping', s.unmatchedRincianAkun, 'unmatchedRincianAkun'], ['Baris dengan mapping', s.mappedRows, 'mappedRows']
     ];
     var resultItems = [
       ['Total kelompok hasil', s.resultRows],
@@ -237,7 +270,10 @@
     ];
 
     function buildHtml(items) {
-      return items.map(function (item) { return '<div class="stat"><small>' + item[0] + '</small><strong>' + formatNumber(item[1]) + '</strong></div>'; }).join('');
+      return items.map(function (item) {
+        var info = item[2] ? ' <button type="button" class="stat-info" data-stat-info="' + item[2] + '" aria-label="Penjelasan ' + item[0] + '" aria-haspopup="dialog">i</button>' : '';
+        return '<div class="stat' + (item[2] ? ' stat-with-info' : '') + '">' + info + '<small>' + item[0] + '</small><strong>' + formatNumber(item[1]) + '</strong></div>';
+      }).join('');
     }
 
     document.getElementById('statGridF1').innerHTML = buildHtml(f1Items);
@@ -248,10 +284,11 @@
 
     var r = s.summary;
     if (r) {
-      document.getElementById('statGridEfs').innerHTML += nominalCard('Total EFS dalam IDR', r.efsTotalIDR);
+      document.getElementById('statGridF1').innerHTML += nominalCard('Total F1 (IDR)', r.f1TotalIDR);
+      document.getElementById('statGridEfs').innerHTML += nominalCard('Total EFS (IDR)', r.efsTotalIDR);
       document.getElementById('statGridResult').innerHTML += buildHtml([
-        ['F1 match dengan EFS', r.f1MatchedGroups],
-        ['F1 tidak match dengan EFS', r.f1UnmatchedGroups],
+        ['F1 match dengan EFS', r.f1MatchedGroups, 'f1MatchedGroups'],
+        ['F1 tidak match dengan EFS', r.f1UnmatchedGroups, 'f1UnmatchedGroups'],
         ['EFS tanpa pasangan F1', r.efsOnly]
       ]) + nominalCard('Total gabungan F1 + EFS (IDR)', r.combinedTotalIDR);
     }

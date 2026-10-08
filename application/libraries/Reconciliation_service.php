@@ -64,9 +64,9 @@ class Reconciliation_service
                 // Parser already trims every source field.
                 $branch = $row['f5'];
                 if ($row['f8'] !== '0000') {
-                    $stats['filteredByF8']++;
                     return;
                 }
+                $stats['filteredByF8']++;
                 if ($branch === '0000') {
                     return;
                 }
@@ -190,7 +190,7 @@ class Reconciliation_service
                 'efs_eqIDR' => $efs === NULL ? NULL : $this->amount->format_accumulator($efs['efs_eqIDR']),
                 'selisih_eqIDR' => $difference_idr
             ));
-            $exporter->add_row($result_row, $is_rasionalisasi);
+            $exporter->add_row($result_row, $is_rasionalisasi, $efs !== NULL && count($efs['rincian']) > 1);
             if ($on_result !== NULL) call_user_func($on_result, $result_row, $is_rasionalisasi);
             $stats['resultRows']++;
         }

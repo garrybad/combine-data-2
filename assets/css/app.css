@@ -379,6 +379,7 @@ p {
 }
 
 .stat {
+    position: relative;
     border: 1px solid #e8e4df;
     background: #faf9f7;
     border-radius: 12px;
@@ -398,6 +399,42 @@ p {
     display: block;
     margin-top: 8px;
     font-size: 19px
+}
+
+.stat-info {
+    position: absolute;
+    top: 7px;
+    right: 7px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 15px;
+    height: 15px;
+    padding: 0;
+    border: 1px solid #999;
+    border-radius: 50%;
+    background: transparent;
+    color: #666;
+    font: 700 10px Georgia, serif;
+    letter-spacing: normal;
+    text-transform: none;
+    vertical-align: middle;
+    cursor: pointer
+}
+
+.stat-with-info small {
+    padding-right: 18px
+}
+
+.stat-info:hover {
+    background: #fff0df;
+    border-color: #ff6e00;
+    color: #b84f00
+}
+
+.stat-info:focus-visible {
+    outline: 2px solid #ff6e00;
+    outline-offset: 3px
 }
 
 .stat-nominal {

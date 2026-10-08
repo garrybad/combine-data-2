@@ -71,7 +71,7 @@ try {
         'f1TotalIDR' => '1195.00', 'efsTotalIDR' => '619.00', 'combinedTotalIDR' => '1814.00', 'f1MatchedGroups' => 1, 'f1UnmatchedGroups' => 4));
     check($stats['unmatchedEfsGroups'], 4);
     check($stats['lkpRows'], 9);
-    check($stats['filteredByF8'], 2);
+    check($stats['filteredByF8'], 7);
     check($stats['filteredByPeriod'], 1);
     require_once __DIR__ . '/../vendor/autoload.php';
     $service->process($lkp, $tb, $out, 'xlsx');
@@ -88,6 +88,9 @@ try {
     check((string) $sheet->getCell('J3')->getValue(), '450');
     check((string) $sheet->getCell('G6')->getValue(), '-99');
     check($sheet->getFreezePane(), 'A2');
+    foreach (range('A', 'J') as $column)
+        check($sheet->getStyle($column . '3')->getFill()->getStartColor()->getARGB(), 'FFFFFF00');
+    check($sheet->getStyle('A6')->getFill()->getFillType(), 'none');
     $book->disconnectWorksheets();
 
     // Suppress both differences for matched, F1-only, and EFS-only accounts.
@@ -113,7 +116,7 @@ try {
         foreach (range(2, 8) as $rowNumber) {
             $fill = $book->getActiveSheet()->getStyle($column . $rowNumber)->getFill();
             check($fill->getFillType(), 'solid');
-            check($fill->getStartColor()->getARGB(), 'FFFFCC80');
+            check($fill->getStartColor()->getARGB(), $rowNumber === 3 ? 'FFFFFF00' : 'FFFFCC80');
         }
     }
     check($book->getActiveSheet()->getStyle('A1')->getFill()->getFillType(), 'none');
@@ -126,7 +129,7 @@ try {
     check($mixedStats['nonRasionalisasiRows'], 6);
     check($mixedStats['rasionalisasiRows'] + $mixedStats['nonRasionalisasiRows'], $mixedStats['resultRows']);
     $book = \PhpOffice\PhpSpreadsheet\IOFactory::load($out);
-    check($book->getActiveSheet()->getStyle('A3')->getFill()->getFillType(), 'none');
+    check($book->getActiveSheet()->getStyle('A3')->getFill()->getStartColor()->getARGB(), 'FFFFFF00');
     check($book->getActiveSheet()->getStyle('J4')->getFill()->getStartColor()->getARGB(), 'FFFFCC80');
     $book->disconnectWorksheets();
     $ci->Reconciliation_model->rasionalisasi = array();
