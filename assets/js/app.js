@@ -22,11 +22,11 @@
   var statExplanations = {
     unmatchedRincianAkun: {
       title: 'Baris tanpa mapping',
-      text: 'Jumlah baris EFS yang rincian akunnya tidak ditemukan di tabel mapping. Baris ini tidak dimasukkan ke hasil.'
+      text: 'Jumlah baris EFS yang rincian akunnya tidak ditemukan di tabel mapping.'
     },
     mappedRows: {
       title: 'Baris dengan mapping',
-      text: 'Jumlah baris EFS yang rincian akunnya ditemukan di tabel mapping. Mapping dengan COA F1 kosong tetap terhitung, tetapi tidak dimasukkan ke hasil.'
+      text: 'Jumlah baris EFS yang rincian akunnya ditemukan di tabel mapping.'
     },
     filteredByF8: {
       title: 'Terfilter f8',
@@ -34,11 +34,11 @@
     },
     f1MatchedGroups: {
       title: 'F1 match dengan EFS',
-      text: 'Jumlah kelompok F1 yang memiliki pasangan EFS dengan cabang, COA F1, dan mata uang yang sama. Nominalnya masih bisa berbeda.'
+      text: 'Jumlah kelompok F1 yang memiliki pasangan EFS dengan cabang, COA F1, dan CCY yang sama. Nominalnya masih bisa berbeda.'
     },
     f1UnmatchedGroups: {
       title: 'F1 tidak match dengan EFS',
-      text: 'Jumlah kelompok F1 yang tidak memiliki pasangan EFS dengan cabang, COA F1, dan mata uang yang sama.'
+      text: 'Jumlah kelompok F1 yang tidak memiliki pasangan EFS dengan cabang, COA F1, dan CCY yang sama.'
     }
   };
   statsBox.addEventListener('click', function (event) {
