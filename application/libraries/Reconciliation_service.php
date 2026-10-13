@@ -92,48 +92,74 @@ class Reconciliation_service
         $stats['sourceDates'] = array_keys($source_dates);
         $lkp_done = microtime(TRUE);
 
+        $layout = $this->parser->detect_efs_layout($tb_path);
+        $has_idr = $layout['hasIdr'];
+        $has_period = isset($layout['columns']['period']);
+        $target_period = $this->CI->reconciliation_date->period_from_source($stats['sourceDates']);
+        $stats['efsLayout'] = array(
+            'format' => $layout['source']['type'] === 'xlsx' ? 'XLSX' : 'Teks',
+            'sheet' => $layout['source']['type'] === 'xlsx' ? $layout['source']['name'] : NULL,
+            'columns' => $layout['names'],
+            'amountMode' => $has_idr ? 'ori_idr' : 'ori'
+        );
+        $stats['efsPeriod'] = $has_period && $target_period
+            ? sprintf('%04d-%02d', $target_period['year'], $target_period['month']) : NULL;
+
         $efs_groups = array();
-        $tb_handle = fopen($tb_path, 'rb');
-        if (!$tb_handle)
-            throw new Exception('File TB Juni tidak dapat dibuka.');
-        try {
-            $this->parser->parse_tb_handle($tb_handle, function ($row) use (&$stats, &$mapping_by_rincian, &$efs_groups) {
-                $stats['tbRows']++;
-                if (!is_numeric($row['PERIOD_NUM']) || (float) $row['PERIOD_NUM'] != 6) {
+        $period_matches = array();
+        $seen_periods = array();
+        $this->parser->parse_efs_file($tb_path, $layout, function ($row) use (&$stats, &$mapping_by_rincian, &$efs_groups,
+            &$period_matches, &$seen_periods, $has_idr, $has_period, $target_period) {
+            $stats['tbRows']++;
+            if ($has_period) {
+                $period = $row['period'];
+                if (!isset($period_matches[$period])) {
+                    $parsed = $this->parser->parse_period($period);
+                    if (count($seen_periods) < 10) $seen_periods[$period === '' ? '(kosong)' : $period] = TRUE;
+                    $period_matches[$period] = $parsed !== NULL && ($target_period === NULL
+                        || $parsed['month'] === $target_period['month'] && ($parsed['year'] === NULL || $parsed['year'] === $target_period['year']));
+                }
+                if (!$period_matches[$period]) {
                     $stats['filteredByPeriod']++;
                     return;
                 }
-                $segments = explode('-', $row['CONCATENATED_SEGMENTS']);
-                $branch = $this->key($segments[0]);
-                $rincian = $this->key($segments[min(2, count($segments) - 1)]);
-                $mappings = isset($mapping_by_rincian[$rincian]) ? $mapping_by_rincian[$rincian] : array();
-                if (!$mappings) {
-                    $stats['unmatchedRincianAkun']++;
-                    return;
+            }
+            $branch = $row['branch'];
+            $rincian = $row['rincian'];
+            $mappings = isset($mapping_by_rincian[$rincian]) ? $mapping_by_rincian[$rincian] : array();
+            if (!$mappings) {
+                $stats['unmatchedRincianAkun']++;
+                return;
+            }
+            $stats['mappedRows']++;
+            $currency = strtoupper($row['currency']);
+            foreach ($mappings as $coa) {
+                if ($coa === NULL)
+                    continue;
+                $key = $this->group_key($branch, $coa, $currency);
+                if (!isset($efs_groups[$key])) {
+                    $efs_groups[$key] = array(
+                        'branch' => $branch,
+                        'coaF1' => $coa,
+                        'currency' => $currency,
+                        'rincian' => array(),
+                        'efs_ori' => 0,
+                        'efs_eqIDR' => 0
+                    );
                 }
-                $stats['mappedRows']++;
-                $currency = strtoupper($row['CURRENCY_CODE']);
-                foreach ($mappings as $coa) {
-                    if ($coa === NULL)
-                        continue;
-                    $key = $this->group_key($branch, $coa, $currency);
-                    if (!isset($efs_groups[$key])) {
-                        $efs_groups[$key] = array(
-                            'branch' => $branch,
-                            'coaF1' => $coa,
-                            'currency' => $currency,
-                            'rincian' => array(),
-                            'efs_ori' => 0,
-                            'efs_eqIDR' => 0
-                        );
-                    }
-                    $efs_groups[$key]['rincian'][$rincian] = $rincian;
-                    $efs_groups[$key]['efs_ori'] = $this->amount->accumulate($efs_groups[$key]['efs_ori'], $row['AMOUNT']);
-                    $efs_groups[$key]['efs_eqIDR'] = $this->amount->accumulate($efs_groups[$key]['efs_eqIDR'], $row['BASE_AMOUNT']);
-                }
-            }, TRUE);
-        } finally {
-            fclose($tb_handle);
+                $efs_groups[$key]['rincian'][$rincian] = $rincian;
+                $efs_groups[$key]['efs_ori'] = $this->amount->accumulate($efs_groups[$key]['efs_ori'], $row['ori']);
+                if ($has_idr)
+                    $efs_groups[$key]['efs_eqIDR'] = $this->amount->accumulate($efs_groups[$key]['efs_eqIDR'], $row['idr']);
+            }
+        });
+        if ($has_period && $target_period === NULL && count($period_matches) > 1) {
+            throw new Exception('File EFS berisi beberapa periode (' . implode(', ', array_keys($seen_periods)) .
+                '), tetapi periode F1 tidak dapat ditentukan karena kolom f1 tidak berisi satu bulan yang sama.');
+        }
+        if ($stats['tbRows'] > 0 && $stats['filteredByPeriod'] === $stats['tbRows']) {
+            throw new Exception('Tidak ada baris EFS untuk periode F1 ' . $stats['efsPeriod'] . '. Periode di file EFS: ' .
+                implode(', ', array_keys($seen_periods)) . '.');
         }
         $tb_done = microtime(TRUE);
 
@@ -156,8 +182,12 @@ class Reconciliation_service
         $sort_done = microtime(TRUE);
         $summary = array('matched' => 0, 'different' => 0, 'f1Only' => 0, 'efsOnly' => 0, 'rasionalisasi' => 0,
             'f1TotalIDR' => $f1_total_idr, 'efsTotalIDR' => 0);
+        // Without an IDR amount column, original amounts are IDR only for IDR groups.
+        $efs_total_known = TRUE;
+        $headers = array('branch', 'coaF1', 'currency', 'efs_rincianAkun', 'lkp_ori', 'efs_ori', 'selisih_ori');
+        if ($has_idr) $headers = array_merge($headers, array('lkp_eqIDR', 'efs_eqIDR', 'selisih_eqIDR'));
         $exporter = new Excel_exporter();
-        $exporter->start($format);
+        $exporter->start($format, $headers);
         foreach ($lkp_groups as $key => $lkp) {
             $efs = isset($efs_groups[$key]) ? $efs_groups[$key] : NULL;
             if ($efs === NULL) {
@@ -168,18 +198,22 @@ class Reconciliation_service
             if ($is_rasionalisasi) $stats['rasionalisasiRows']++;
             else $stats['nonRasionalisasiRows']++;
             $difference_ori = $efs === NULL || $is_rasionalisasi ? NULL : $this->amount->subtract_accumulators($lkp['lkp_ori'] === NULL ? 0 : $lkp['lkp_ori'], $efs['efs_ori']);
-            $difference_idr = $efs === NULL || $is_rasionalisasi ? NULL : $this->amount->subtract_accumulators($lkp['lkp_eqIDR'] === NULL ? 0 : $lkp['lkp_eqIDR'], $efs['efs_eqIDR']);
+            $difference_idr = $efs === NULL || $is_rasionalisasi || !$has_idr ? NULL : $this->amount->subtract_accumulators($lkp['lkp_eqIDR'] === NULL ? 0 : $lkp['lkp_eqIDR'], $efs['efs_eqIDR']);
             $lkp['lkp_ori'] = $lkp['lkp_ori'] === NULL ? NULL : $this->amount->format_accumulator($lkp['lkp_ori']);
-            $lkp['lkp_eqIDR'] = $lkp['lkp_eqIDR'] === NULL ? NULL : $this->amount->format_accumulator($lkp['lkp_eqIDR']);
+            $lkp['lkp_eqIDR'] = $lkp['lkp_eqIDR'] === NULL || !$has_idr ? NULL : $this->amount->format_accumulator($lkp['lkp_eqIDR']);
             // Statistics describe the existing output; they do not alter reconciliation.
             if ($efs !== NULL) {
-                $summary['efsTotalIDR'] = $this->amount->accumulate($summary['efsTotalIDR'],
-                    $this->amount->format_accumulator($efs['efs_eqIDR']));
+                if ($has_idr || $efs['currency'] === 'IDR') {
+                    $summary['efsTotalIDR'] = $this->amount->accumulate($summary['efsTotalIDR'],
+                        $this->amount->format_accumulator($has_idr ? $efs['efs_eqIDR'] : $efs['efs_ori']));
+                } else {
+                    $efs_total_known = FALSE;
+                }
             }
             if ($efs === NULL) $summary['f1Only']++;
             elseif ($lkp['lkp_ori'] === NULL) $summary['efsOnly']++;
             elseif ($is_rasionalisasi) $summary['rasionalisasi']++;
-            elseif ($difference_ori === '0.00' && $difference_idr === '0.00') $summary['matched']++;
+            elseif ($difference_ori === '0.00' && (!$has_idr || $difference_idr === '0.00')) $summary['matched']++;
             else $summary['different']++;
             if ($efs !== NULL)
                 sort($efs['rincian'], SORT_STRING);
@@ -187,7 +221,7 @@ class Reconciliation_service
                 'efs_rincianAkun' => $efs === NULL ? NULL : implode(',', $efs['rincian']),
                 'efs_ori' => $efs === NULL ? NULL : $this->amount->format_accumulator($efs['efs_ori']),
                 'selisih_ori' => $difference_ori,
-                'efs_eqIDR' => $efs === NULL ? NULL : $this->amount->format_accumulator($efs['efs_eqIDR']),
+                'efs_eqIDR' => $efs === NULL || !$has_idr ? NULL : $this->amount->format_accumulator($efs['efs_eqIDR']),
                 'selisih_eqIDR' => $difference_idr
             ));
             $exporter->add_row($result_row, $is_rasionalisasi, $efs !== NULL && count($efs['rincian']) > 1);
@@ -196,8 +230,8 @@ class Reconciliation_service
         }
 
         $summary['f1TotalIDR'] = $this->amount->format_accumulator($summary['f1TotalIDR']);
-        $summary['efsTotalIDR'] = $this->amount->format_accumulator($summary['efsTotalIDR']);
-        $summary['combinedTotalIDR'] = $this->amount->sum($summary['f1TotalIDR'], $summary['efsTotalIDR']);
+        $summary['efsTotalIDR'] = $efs_total_known ? $this->amount->format_accumulator($summary['efsTotalIDR']) : NULL;
+        $summary['combinedTotalIDR'] = $efs_total_known ? $this->amount->sum($summary['f1TotalIDR'], $summary['efsTotalIDR']) : NULL;
         $summary['f1MatchedGroups'] = $summary['matched'] + $summary['different'] + $summary['rasionalisasi'];
         $summary['f1UnmatchedGroups'] = $summary['f1Only'];
         $stats['summary'] = $summary;
@@ -215,7 +249,7 @@ class Reconciliation_service
             'saveFile' => round($finished - $write_done, 3),
             'total' => round($finished - $started, 3)
         );
-        $stats['processorVersion'] = '2026-10-07.1';
+        $stats['processorVersion'] = '2026-10-13.1';
         $stats['runtime'] = array(
             'phpVersion' => PHP_VERSION,
             'integerBits' => PHP_INT_SIZE * 8,

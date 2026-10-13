@@ -72,13 +72,13 @@
                   <div><strong>File EFS</strong><small>Data EFS per periode.</small></div>
                 </div><span id="tbState" class="state">Belum siap</span>
               </div>
-              <p class="format">Format: TSV, TXT</p>
+              <p class="format">Format: XLSX, TSV, TXT, CSV</p>
               <div class="file-bottom">
                 <label for="tbInput" class="choose">▣ &nbsp;Pilih file</label>
                 <button type="button" class="remove hidden" data-remove="tbInput">Hapus</button>
                 <span id="tbName">Belum ada file dipilih</span>
               </div>
-              <input id="tbInput" name="tbFile" type="file" accept=".tsv,.txt" hidden>
+              <input id="tbInput" name="tbFile" type="file" accept=".xlsx,.tsv,.txt,.csv" hidden>
             </div>
           </div>
           <div class="form-foot">
@@ -140,6 +140,7 @@
         <div class="stat-grid" id="statGridF1"></div>
         <h3 class="stat-section-title">Dari File EFS</h3>
         <div class="stat-grid" id="statGridEfs"></div>
+        <p id="efsLayoutNote" class="layout-note" hidden></p>
         <h3 class="stat-section-title">Gabungan / Hasil</h3>
         <div class="stat-grid" id="statGridResult"></div>
       </section>

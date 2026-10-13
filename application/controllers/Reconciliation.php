@@ -48,7 +48,7 @@ class Reconciliation extends CI_Controller
             if ($format === NULL) $format = 'csv';
             if (!in_array($format, array('csv', 'xlsx'), TRUE)) throw new Exception('Pilih format CSV atau XLSX.');
             $this->validate_file('lkpFile', 'File LKP');
-            $this->validate_file('tbFile', 'File Bulanan');
+            $this->validate_file('tbFile', 'File EFS');
             $lkp = $this->store_upload('lkpFile', 'lkp');
             $tb = $this->store_upload('tbFile', 'tb');
             $output = FCPATH . 'outputs/hasil-rekonsiliasi-' . bin2hex(random_bytes(12)) . '.' . $format;

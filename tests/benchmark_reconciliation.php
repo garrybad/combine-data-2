@@ -3,7 +3,7 @@
 // Run: php -d memory_limit=512M tests/benchmark_reconciliation.php
 error_reporting(E_ALL & ~E_DEPRECATED);
 define('BASEPATH', __DIR__);
-foreach (array('Amount_math', 'Reconciliation_parser', 'Reconciliation_service', 'Excel_exporter') as $library) {
+foreach (array('Amount_math', 'Reconciliation_parser', 'Reconciliation_service', 'Excel_exporter', 'Reconciliation_date') as $library) {
     require __DIR__ . '/../application/libraries/' . $library . '.php';
 }
 function &get_instance() { global $ci; return $ci; }
@@ -14,6 +14,7 @@ class BenchmarkMapping {
 $ci = new stdClass();
 $ci->amount_math = new Amount_math();
 $ci->reconciliation_parser = new Reconciliation_parser();
+$ci->reconciliation_date = new Reconciliation_date();
 $ci->Reconciliation_model = new BenchmarkMapping();
 $lkp = tempnam(sys_get_temp_dir(), 'bench-lkp-');
 $tb = tempnam(sys_get_temp_dir(), 'bench-tb-');

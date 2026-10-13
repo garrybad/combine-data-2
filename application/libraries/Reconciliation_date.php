@@ -22,4 +22,24 @@ class Reconciliation_date
         if (count($dates) !== 1) throw new Exception('Penyimpanan memerlukan satu tanggal yang sama pada seluruh kolom f1.');
         return key($dates);
     }
+
+    /** Returns array('year' => int, 'month' => int) when every f1 date shares one month, otherwise NULL. */
+    public function period_from_source($values)
+    {
+        $periods = array();
+        foreach ($values as $value) {
+            $value = trim((string) $value);
+            $matched = FALSE;
+            foreach (array('Ymd', 'Y-m-d', 'd/m/Y', 'd-m-Y', 'dmY') as $format) {
+                $date = DateTime::createFromFormat('!' . $format, $value);
+                if ($date && $date->format($format) === $value) {
+                    $periods[$date->format('Y-m')] = array('year' => (int) $date->format('Y'), 'month' => (int) $date->format('n'));
+                    $matched = TRUE;
+                    break;
+                }
+            }
+            if (!$matched) return NULL;
+        }
+        return count($periods) === 1 ? reset($periods) : NULL;
+    }
 }

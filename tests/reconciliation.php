@@ -1,7 +1,7 @@
 <?php
 error_reporting(E_ALL & ~E_DEPRECATED);
 define('BASEPATH', __DIR__);
-foreach (array('Reconciliation_parser', 'Amount_math', 'Excel_exporter', 'Reconciliation_service') as $library)
+foreach (array('Reconciliation_parser', 'Amount_math', 'Excel_exporter', 'Reconciliation_service', 'Reconciliation_date') as $library)
     require __DIR__ . '/../application/libraries/' . $library . '.php';
 function &get_instance()
 {
@@ -21,6 +21,7 @@ class MappingFixture
 $ci = new stdClass();
 $ci->reconciliation_parser = new Reconciliation_parser();
 $ci->amount_math = new Amount_math();
+$ci->reconciliation_date = new Reconciliation_date();
 $ci->Reconciliation_model = new MappingFixture();
 $ci->Reconciliation_model->rows = array(
     array('rincianAkun' => '20', 'coaF1' => '100'),
@@ -37,7 +38,7 @@ function check($actual, $expected)
         throw new Exception(var_export(array('actual' => $actual, 'expected' => $expected), TRUE));
 }
 try {
-    file_put_contents($lkp, "x|100|x|USD|0002|9|90|0000\nx|100|x| usd |0001|100.25|1000|0000\nx|100|x|USD|0001|-10.10|-100|0000\nx|100|x|USD|0001|999|999|1111\nx|100|x|IDR|0001|5|5|0000\nx|200|x|USD|0001|50|50|1111\nx|100|x|USD|0000|100|100|0000\nx|100|x|USD|9001|12|120|0000\nx|100|x|IDR|w18|8|80|0000\n");
+    file_put_contents($lkp, str_replace('x|', '20260630|', "x|100|x|USD|0002|9|90|0000\nx|100|x| usd |0001|100.25|1000|0000\nx|100|x|USD|0001|-10.10|-100|0000\nx|100|x|USD|0001|999|999|1111\nx|100|x|IDR|0001|5|5|0000\nx|200|x|USD|0001|50|50|1111\nx|100|x|USD|0000|100|100|0000\nx|100|x|USD|9001|12|120|0000\nx|100|x|IDR|w18|8|80|0000\n"));
     file_put_contents($tb, "CONCATENATED_SEGMENTS\tPERIOD_NUM\tCURRENCY_CODE\tAMOUNT\tBASE_AMOUNT\n0001-x-20\t6\t UsD \t20.10\t200\n0001-x-10\t6\tUSD\t30\t300\n0001-x-20\t6\tUSD\t-5\t-50\n0001-x-20\t5\tUSD\t999\t999\n0003-x-10\t6\tUSD\t99\t99\n0001-x-30\t6\tUSD\t99\t99\n0001-x-99\t6\tUSD\t99\t99\n0000-x-10\t6\tusd\t10\t20\n0001-x-40\t6\tUSD\t7\t70\n");
     $service = new Reconciliation_service();
     $captured = array();
@@ -47,7 +48,9 @@ try {
     check(count($captured), 7);
     check($captured[1][0]['selisih_eqIDR'], '450.00');
     check($captured[1][1], FALSE);
-    check($stats['sourceDates'], array('x'));
+    check($stats['sourceDates'], array(20260630));
+    check($stats['efsLayout']['amountMode'], 'ori_idr');
+    check($stats['efsPeriod'], '2026-06');
     $handle = fopen($out, 'r');
     $header = fgetcsv($handle, 0, ';');
     $rows = array();
@@ -246,27 +249,113 @@ try {
             $ci->amount_math->subtract($ci->amount_math->format_accumulator($pair[0]), $ci->amount_math->format_accumulator($pair[1]))
         );
     }
-    // Projection retains reordered/duplicate-header semantics and validates row width.
-    $stream = fopen('php://memory', 'w+b');
-    fwrite($stream, "EXTRA\tAMOUNT\tPERIOD_NUM\tCURRENCY_CODE\tCONCATENATED_SEGMENTS\tBASE_AMOUNT\tAMOUNT\nignored\t1\t6\tUSD\t0001-x-20\t3\t2\n");
-    rewind($stream);
-    $projected = NULL;
-    $ci->reconciliation_parser->parse_tb_handle($stream, function ($row) use (&$projected) {
-        $projected = $row; }, TRUE);
-    check(count($projected), 5);
-    check($projected['AMOUNT'], '2');
-    fclose($stream);
+    $parser = $ci->reconciliation_parser;
+    $parse_all = function ($path) use ($parser) {
+        $layout = $parser->detect_efs_layout($path);
+        $rows = array();
+        $parser->parse_efs_file($path, $layout, function ($row) use (&$rows) { $rows[] = $row; });
+        return array($layout, $rows);
+    };
+    // Reordered headers: a later duplicate header overrides an earlier one.
+    file_put_contents($tb, "EXTRA\tAMOUNT\tPERIOD_NUM\tCURRENCY_CODE\tCONCATENATED_SEGMENTS\tBASE_AMOUNT\tAMOUNT\nignored\t1\t6\tUSD\t0001-x-20\t3\t2\n");
+    list($layout, $parsed) = $parse_all($tb);
+    check($parsed, array(array('branch' => '0001', 'rincian' => '20', 'currency' => 'USD', 'period' => '6', 'ori' => '2', 'idr' => '3')));
+    check($layout['names']['ori'], 'AMOUNT');
+    check($layout['columns']['ori'], 6);
     // Quoted wide exports trim selected fields and retain escaped delimiters.
     foreach (array('" unused "', '"unused""value"') as $extra) {
-        $stream = fopen('php://memory', 'w+b');
-        fwrite($stream, "EXTRA\tAMOUNT\tPERIOD_NUM\tCURRENCY_CODE\tCONCATENATED_SEGMENTS\tBASE_AMOUNT\n" .
+        file_put_contents($tb, "EXTRA\tAMOUNT\tPERIOD_NUM\tCURRENCY_CODE\tCONCATENATED_SEGMENTS\tBASE_AMOUNT\n" .
             $extra . "\t\" 1.25 \"\t\" 6 \"\t\" USD \"\t\" 0001-x-20 \"\t\" 3.50 \"\n");
-        rewind($stream);
-        $ci->reconciliation_parser->parse_tb_handle($stream, function ($row) use (&$projected) {
-            $projected = $row; }, TRUE);
-        check($projected, array('AMOUNT' => '1.25', 'PERIOD_NUM' => '6',
-            'CURRENCY_CODE' => 'USD', 'CONCATENATED_SEGMENTS' => '0001-x-20', 'BASE_AMOUNT' => '3.50'));
-        fclose($stream);
+        list(, $parsed) = $parse_all($tb);
+        check($parsed, array(array('branch' => '0001', 'rincian' => '20', 'currency' => 'USD', 'period' => '6', 'ori' => '1.25', 'idr' => '3.50')));
+    }
+    // Rows must keep the header width in delimited files.
+    file_put_contents($tb, "CONCATENATED_SEGMENTS\tPERIOD_NUM\tCURRENCY_CODE\tAMOUNT\tBASE_AMOUNT\n0001-x-20\t6\tUSD\t1\n");
+    $rejected = FALSE;
+    try { $parse_all($tb); } catch (Exception $e) { $rejected = strpos($e->getMessage(), 'baris 2') !== FALSE; }
+    check($rejected, TRUE);
+    // Headerless semicolon file: columns are recognised from their contents only.
+    file_put_contents($tb, "0001;1011010001;IDR;100.50;100.50\n0002;1011010002;usd;-5;-75000.25\n");
+    list($layout, $parsed) = $parse_all($tb);
+    check($layout['columns'], array('branch' => 0, 'currency' => 2, 'idr' => 4, 'ori' => 3, 'rincian' => 1));
+    check(count($parsed), 2);
+    check($parsed[1], array('branch' => '0002', 'rincian' => '1011010002', 'currency' => 'usd', 'period' => NULL, 'ori' => '-5', 'idr' => '-75000.25'));
+    // Unknown header names fall back to content; a single amount means original only.
+    file_put_contents($tb, "Kode,Akun,Mata,Nilai\n0001,1011010001,IDR,1.5E3\n");
+    list($layout, $parsed) = $parse_all($tb);
+    check($layout['hasIdr'], FALSE);
+    check($parsed[0]['ori'], '1500');
+    $rejected = FALSE;
+    try {
+        file_put_contents($tb, "A\tB\n1\t2\n");
+        $parser->detect_efs_layout($tb);
+    } catch (Exception $e) { $rejected = strpos($e->getMessage(), 'tidak dikenali') !== FALSE; }
+    check($rejected, TRUE);
+    foreach (array('6' => array(6, NULL), '06' => array(6, NULL), 'SEP-26' => array(9, 2026), 'Sep-2026' => array(9, 2026),
+        'MEI 26' => array(5, 2026), '2026-09' => array(9, 2026), '202609' => array(9, 2026), '09/2026' => array(9, 2026)) as $value => $expected)
+        check($parser->parse_period((string) $value), array('month' => $expected[0], 'year' => $expected[1]));
+    foreach (array('', '0', '14', 'XYZ-26', '0001') as $value) check($parser->parse_period($value), NULL);
+    check($ci->reconciliation_date->period_from_source(array('20260630', '30/06/2026', '20260615')), array('year' => 2026, 'month' => 6));
+    check($ci->reconciliation_date->period_from_source(array('20260630', '20260731')), NULL);
+    check($ci->reconciliation_date->period_from_source(array('x')), NULL);
+
+    // XLSX with only an original amount: skips non-table sheets, filters by
+    // F1 month, rounds Excel doubles, and exports original columns only.
+    $xlsx = tempnam(sys_get_temp_dir(), 'efs') . '.xlsx';
+    $zip = new ZipArchive();
+    $zip->open($xlsx, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+    $ns = 'xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"';
+    $zip->addFromString('xl/workbook.xml', '<workbook ' . $ns . '><sheets><sheet name="SQL" sheetId="1" r:id="rId1"/><sheet name="Export" sheetId="2" r:id="rId2"/></sheets></workbook>');
+    $zip->addFromString('xl/_rels/workbook.xml.rels', '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Target="/xl/worksheets/sheet2.xml"/></Relationships>');
+    $zip->addFromString('xl/sharedStrings.xml', '<sst ' . $ns . '><si><t>PERIOD_NAME</t></si><si><t>ENTITY_CODE</t></si><si><r><t>NATURAL_</t></r><r><t>ACCOUNT</t></r></si><si><t>CURRENCY_CODE</t></si><si><t>ENDING_BALANCE</t></si><si><t>JUN-26</t></si><si><t>SELECT 1</t></si></sst>');
+    $zip->addFromString('xl/worksheets/sheet1.xml', '<worksheet ' . $ns . '><sheetData><row r="2"><c r="A2" t="s"><v>6</v></c></row></sheetData></worksheet>');
+    $cell = function ($ref, $value, $type = NULL) {
+        if ($type === 's') return '<c r="' . $ref . '" t="s"><v>' . $value . '</v></c>';
+        if ($type === 'inline') return '<c r="' . $ref . '" t="inlineStr"><is><t>' . $value . '</t></is></c>';
+        return '<c r="' . $ref . '"><v>' . $value . '</v></c>';
+    };
+    $zip->addFromString('xl/worksheets/sheet2.xml', '<worksheet ' . $ns . '><sheetData>' .
+        '<row r="1"><c r="A1" t="inlineStr"><is><t>Trial Balance</t></is></c></row>' .
+        '<row r="3">' . $cell('A3', 0, 's') . $cell('B3', 1, 's') . $cell('C3', 2, 's') . $cell('D3', 3, 's') . $cell('E3', 4, 's') . '</row>' .
+        '<row r="4">' . $cell('A4', 5, 's') . $cell('B4', '0001', 'inline') . $cell('C4', '20') . $cell('D4', 'IDR', 'inline') . $cell('E4', '329.39999999999998') . '</row>' .
+        '<row r="5">' . $cell('A5', 5, 's') . $cell('B5', '0001', 'inline') . $cell('C5', '10') . $cell('D5', 'IDR', 'inline') . $cell('E5', '0.60000000000000009') . '</row>' .
+        '<row r="6">' . $cell('A6', 'SEP-26', 'inline') . $cell('B6', '0001', 'inline') . $cell('C6', '10') . $cell('D6', 'IDR', 'inline') . $cell('E6', '999') . '</row>' .
+        '<row r="7">' . $cell('A7', 5, 's') . $cell('B7', '0001', 'inline') . $cell('C7', '40') . $cell('D7', 'USD', 'inline') . '</row>' .
+        '</sheetData></worksheet>');
+    $zip->close();
+    try {
+        list($layout, $parsed) = $parse_all($xlsx);
+        check($layout['source']['name'], 'Export');
+        check($layout['names'], array('branch' => 'ENTITY_CODE', 'currency' => 'CURRENCY_CODE', 'ori' => 'ENDING_BALANCE',
+            'period' => 'PERIOD_NAME', 'rincian' => 'NATURAL_ACCOUNT'));
+        check($layout['hasIdr'], FALSE);
+        check($parsed[0], array('branch' => '0001', 'rincian' => '20', 'currency' => 'IDR', 'period' => 'JUN-26', 'ori' => '329.4', 'idr' => NULL));
+        check($parsed[3]['ori'], '');
+        $ci->Reconciliation_model->rows = array(array('rincianAkun' => '20', 'coaF1' => '100'), array('rincianAkun' => '10', 'coaF1' => '100'),
+            array('rincianAkun' => '40', 'coaF1' => '200'));
+        $xlsxStats = $service->process($lkp, $xlsx, $out);
+        check($xlsxStats['efsLayout']['amountMode'], 'ori');
+        check($xlsxStats['filteredByPeriod'], 1);
+        $lines = array_map(function ($line) { return str_getcsv($line, ';'); }, file($out, FILE_IGNORE_NEW_LINES));
+        check($lines[0], array("\xEF\xBB\xBFbranch", 'coaF1', 'currency', 'efs_rincianAkun', 'lkp_ori', 'efs_ori', 'selisih_ori'));
+        check($lines[1], array('0001', '100', 'IDR', '10,20', '5.00', '330.00', '-325.00'));
+        check($lines[3], array('0001', '200', 'USD', '40', '', '0.00', '0.00'));
+        // Original amounts count toward IDR totals only when every EFS group is IDR.
+        check($xlsxStats['summary']['efsTotalIDR'], NULL);
+        check($xlsxStats['summary']['different'], 1);
+        $service->process($lkp, $xlsx, $out, 'xlsx');
+        $book = \PhpOffice\PhpSpreadsheet\IOFactory::load($out);
+        check($book->getActiveSheet()->getHighestColumn(), 'G');
+        check((string) $book->getActiveSheet()->getCell('F2')->getValue(), '330');
+        check($book->getActiveSheet()->getAutoFilter()->getRange(), 'A1:G7');
+        $book->disconnectWorksheets();
+        // A F1 month absent from the EFS file is reported instead of producing F1-only rows.
+        file_put_contents($lkp, str_replace('20260630|', '20260731|', file_get_contents($lkp)));
+        $rejected = FALSE;
+        try { $service->process($lkp, $xlsx, $out); } catch (Exception $e) { $rejected = strpos($e->getMessage(), '2026-07') !== FALSE; }
+        check($rejected, TRUE);
+    } finally {
+        unlink($xlsx);
     }
     // Encoded group keys must preserve tuple order and avoid collisions.
     $method = new ReflectionMethod('Reconciliation_service', 'group_key');

@@ -13,8 +13,10 @@ class Reconciliation_model extends CI_Model
     public function get_chart_history()
     {
         if (!$this->db->table_exists('reconciliation_history')) return array();
-        return $this->history_query('SELECT data_date AS date, COALESCE(SUM(selisih_eqIDR), 0) AS total_selisih_eqIDR
-            FROM reconciliation_history GROUP BY data_date ORDER BY data_date')->result_array();
+        // EFS files without an IDR amount store no eqIDR; their IDR rows' original difference is in IDR.
+        return $this->history_query("SELECT data_date AS date,
+            COALESCE(SUM(COALESCE(selisih_eqIDR, CASE WHEN currency = 'IDR' THEN selisih_ori END)), 0) AS total_selisih_eqIDR
+            FROM reconciliation_history GROUP BY data_date ORDER BY data_date")->result_array();
     }
 
     public function save_history($date, $path)

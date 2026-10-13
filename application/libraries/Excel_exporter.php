@@ -13,9 +13,10 @@ class Excel_exporter
         'lkp_ori', 'efs_ori', 'selisih_ori', 'lkp_eqIDR', 'efs_eqIDR', 'selisih_eqIDR'
     );
 
-    public function start($format = 'csv')
+    public function start($format = 'csv', $headers = NULL)
     {
         if (!in_array($format, array('csv', 'xlsx'), TRUE)) throw new Exception('Format output tidak valid.');
+        if ($headers !== NULL) $this->headers = array_values($headers);
         $this->format = $format;
         $this->row_number = 0;
         if ($format === 'xlsx' && !class_exists('ZipArchive')) throw new Exception('Ekstensi PHP zip diperlukan untuk ekspor XLSX.');
@@ -30,7 +31,7 @@ class Excel_exporter
         $this->buffer = fopen('php://memory', 'w+b');
         if (!$this->buffer) throw new Exception('Buffer hasil tidak dapat dibuat.');
         if ($format === 'xlsx') {
-            $this->write('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><cols><col min="1" max="3" width="18" customWidth="1"/><col min="4" max="4" width="35" customWidth="1"/><col min="5" max="10" width="22" customWidth="1"/></cols><sheetData>');
+            $this->write('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><cols><col min="1" max="3" width="18" customWidth="1"/><col min="4" max="4" width="35" customWidth="1"/><col min="5" max="' . count($this->headers) . '" width="22" customWidth="1"/></cols><sheetData>');
             $this->write_xlsx_row($this->headers, TRUE);
         } else {
             $this->write("\xEF\xBB\xBF");
@@ -76,7 +77,7 @@ class Excel_exporter
             if ($value === NULL && !$highlight) continue;
             $reference = chr(65 + $index) . $this->row_number;
             $style = $header ? 1 : ($index >= 4 ? ($multiple_rincian ? 6 : ($highlight ? 4 : 2)) : ($multiple_rincian ? 5 : ($highlight ? 3 : 0)));
-            // Include blank cells so the fill spans all ten columns.
+            // Include blank cells so the fill spans every output column.
             if ($value === NULL) {
                 $xml .= '<c r="' . $reference . '" s="' . $style . '"/>';
                 continue;
@@ -103,7 +104,7 @@ class Excel_exporter
                 if (stream_copy_to_stream($this->handle, $out) === FALSE) throw new Exception('Gagal menyimpan CSV.');
             } finally { fclose($out); }
         } else {
-            $this->write('</sheetData><autoFilter ref="A1:J' . $this->row_number . '"/></worksheet>');
+            $this->write('</sheetData><autoFilter ref="A1:' . chr(64 + count($this->headers)) . $this->row_number . '"/></worksheet>');
             $this->flush_buffer();
             fflush($this->handle);
             $zip = new ZipArchive();

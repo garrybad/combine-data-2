@@ -280,6 +280,20 @@
     document.getElementById('statGridEfs').innerHTML = buildHtml(efsItems);
     document.getElementById('statGridResult').innerHTML = buildHtml(resultItems);
 
+    var layoutNote = document.getElementById('efsLayoutNote');
+    var layout = s.efsLayout;
+    layoutNote.hidden = !layout;
+    if (layout) {
+      var labels = { segments: 'Kombinasi segmen', branch: 'Cabang', rincian: 'Rincian akun', currency: 'Mata uang',
+        period: 'Periode', ori: 'Amount original', idr: 'Amount IDR' };
+      var columns = Object.keys(labels).filter(function (role) { return layout.columns && layout.columns[role]; })
+        .map(function (role) { return labels[role] + ' = ' + layout.columns[role]; });
+      layoutNote.textContent = 'File EFS ' + layout.format + (layout.sheet ? " (sheet '" + layout.sheet + "')" : '') +
+        '. Kolom terdeteksi: ' + columns.join(', ') + '. Output: ' +
+        (layout.amountMode === 'ori_idr' ? 'amount original dan IDR.' : 'amount original saja (file EFS tidak memiliki amount IDR).') +
+        (s.efsPeriod ? ' Periode yang diproses: ' + s.efsPeriod + '.' : '');
+    }
+
     statsBox.classList.remove('hidden');
 
     var r = s.summary;
