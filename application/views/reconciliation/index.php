@@ -57,13 +57,13 @@
                   <div><strong>File F1</strong><small>Data F1.</small></div>
                 </div><span id="lkpState" class="state">Belum siap</span>
               </div>
-              <p class="format">Format: 20260630, TXT, DAT, CSV</p>
+              <p class="format">Format : YYYYMMDD, TXT, DAT, CSV.</p>
               <div class="file-bottom">
                 <label for="lkpInput" class="choose">▣ &nbsp;Pilih file</label>
                 <button type="button" class="remove hidden" data-remove="lkpInput">Hapus</button>
                 <span id="lkpName">Belum ada file dipilih</span>
               </div>
-              <input id="lkpInput" name="lkpFile" type="file" accept=".20260630,.txt,.dat,.csv" hidden>
+              <input id="lkpInput" name="lkpFile" type="file" hidden>
             </div>
 
             <div class="dropzone" data-field="tbFile" id="dropTb">
