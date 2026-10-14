@@ -57,7 +57,7 @@
                   <div><strong>File F1</strong><small>Data F1.</small></div>
                 </div><span id="lkpState" class="state">Belum siap</span>
               </div>
-              <p class="format">Format : YYYYMMDD, TXT, DAT, CSV.</p>
+              <p class="format">Format : YYYYMMDD, TXT, DAT, CSV</p>
               <div class="file-bottom">
                 <label for="lkpInput" class="choose">▣ &nbsp;Pilih file</label>
                 <button type="button" class="remove hidden" data-remove="lkpInput">Hapus</button>

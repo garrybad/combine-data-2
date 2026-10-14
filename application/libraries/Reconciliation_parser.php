@@ -84,7 +84,7 @@ class Reconciliation_parser
             if (trim($line) === '') continue;
             $values = $this->parse_delimited_line($line, '|');
             if (count($values) !== 8) {
-                throw new Exception('Format file LKP tidak valid pada baris ' . $line_no . '. Ditemukan ' . count($values) . ' kolom, seharusnya 8 kolom.');
+                throw new Exception('Format file F1 tidak valid pada baris ' . $line_no . '. Ditemukan ' . count($values) . ' kolom, seharusnya 8 kolom.');
             }
             $on_row(array(
                 'f1' => $values[0], 'f2' => $values[1], 'f3' => $values[2],
